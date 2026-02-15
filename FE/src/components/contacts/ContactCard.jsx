@@ -1,6 +1,10 @@
+import { useNavigate } from "react-router-dom";
 import { getInitials } from "../../utils/helpers";
 
 const ContactCard = ({ contact }) => {
+  const navigate = useNavigate();
+  const contactId = contact?._id || contact?.id;
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow duration-200">
       <div className="flex items-center space-x-4">
@@ -61,11 +65,13 @@ const ContactCard = ({ contact }) => {
         </div>
 
         <div className="flex flex-col space-y-2">
-          <button className="text-blue-600 hover:text-blue-800 text-sm font-medium">
-            Edit
-          </button>
-          <button className="text-red-600 hover:text-red-800 text-sm font-medium">
-            Delete
+          <button
+            type="button"
+            onClick={() => navigate(`/contacts/${contactId}`)}
+            disabled={!contactId}
+            className="text-blue-600 hover:text-blue-800 text-sm font-medium disabled:text-gray-400 disabled:cursor-not-allowed"
+          >
+            View Details
           </button>
         </div>
       </div>
