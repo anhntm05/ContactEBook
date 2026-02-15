@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import ContactList from "../components/contacts/ContactList";
 import Button from "../components/common/Button";
@@ -6,8 +7,11 @@ import api from "../utils/api";
 
 const Dashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [successMessage, setSuccessMessage] = useState("");
   const [stats, setStats] = useState({
     total: 0,
     recentlyAdded: 0,
@@ -16,6 +20,15 @@ const Dashboard = () => {
   useEffect(() => {
     fetchContacts();
   }, []);
+
+  useEffect(() => {
+    const routeMessage = location.state?.successMessage || location.state?.message;
+
+    if (routeMessage) {
+      setSuccessMessage(routeMessage);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
 
   const fetchContacts = async () => {
     try {
@@ -47,6 +60,12 @@ const Dashboard = () => {
           </h1>
           <p className="text-gray-600">Manage and organize your contacts</p>
         </div>
+
+        {successMessage && (
+          <div className="mb-8 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+            {successMessage}
+          </div>
+        )}
 
         <div className="grid md:grid-cols-3 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow-md p-6">
@@ -114,7 +133,7 @@ const Dashboard = () => {
         <div className="bg-white rounded-lg shadow-md p-6">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-2xl font-bold text-gray-800">Your Contacts</h2>
-            <Button variant="primary">
+            <Button variant="primary" onClick={() => navigate("/contacts/new")}>
               <svg className="w-5 h-5 mr-2 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"

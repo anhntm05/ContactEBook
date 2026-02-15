@@ -8,6 +8,8 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
+import CreateContact from "./pages/CreateContact";
+import ContactDetail from "./pages/ContactDetail";
 import NotFound from "./pages/NotFound";
 
 function App() {
@@ -40,6 +42,22 @@ function App() {
                 element={
                   <PrivateRoute>
                     <Dashboard />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/contacts/new"
+                element={
+                  <PrivateRoute>
+                    <CreateContact />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/contacts/:id"
+                element={
+                  <PrivateRoute>
+                    <ContactDetail />
                   </PrivateRoute>
                 }
               />
