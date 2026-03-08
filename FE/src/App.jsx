@@ -10,6 +10,7 @@ import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import CreateContact from "./pages/CreateContact";
 import ContactDetail from "./pages/ContactDetail";
+import ContactListPage from "./pages/ContactListPage";
 import NotFound from "./pages/NotFound";
 
 function App() {
