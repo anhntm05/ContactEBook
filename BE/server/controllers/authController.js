@@ -1,5 +1,5 @@
-const { validationResult } = require("express-validator");
-const User = require("../models/User");
+import { validationResult } from "express-validator";
+import User from "../models/User.js";
 
 const getCookieOptions = () => ({
   httpOnly: true,
@@ -25,9 +25,12 @@ const sendTokenResponse = (user, res, message) => {
 };
 
 const formatValidationErrors = (errors) =>
-  errors.array().map((error) => error.msg).join(", ");
+  errors
+    .array()
+    .map((error) => error.msg)
+    .join(", ");
 
-exports.register = async (req, res, next) => {
+const register = async (req, res, next) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -49,12 +52,13 @@ exports.register = async (req, res, next) => {
 
     const user = await User.create({ username, email, password });
     sendTokenResponse(user, res, "Registered successfully");
+    return null;
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
-exports.login = async (req, res, next) => {
+const login = async (req, res, next) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -80,12 +84,13 @@ exports.login = async (req, res, next) => {
     }
 
     sendTokenResponse(user, res, "Logged in successfully");
+    return null;
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
-exports.logout = (req, res) => {
+const logout = (req, res) => {
   res.cookie("token", "none", {
     ...getCookieOptions(),
     expires: new Date(0),
@@ -95,7 +100,7 @@ exports.logout = (req, res) => {
   res.status(200).json({ success: true, message: "Logged out" });
 };
 
-exports.getMe = (req, res) => {
+const getMe = (req, res) => {
   const user = req.user;
 
   res.status(200).json({
@@ -108,3 +113,5 @@ exports.getMe = (req, res) => {
     },
   });
 };
+
+export { register, login, logout, getMe };

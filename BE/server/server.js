@@ -1,11 +1,12 @@
-require("dotenv").config();
-const express = require("express");
-const cookieParser = require("cookie-parser");
-const cors = require("cors");
+import "dotenv/config";
+import express from "express";
+import cookieParser from "cookie-parser";
+import cors from "cors";
 
-const connectDB = require("./config/db");
-const authRoutes = require("./routes/auth");
-const errorHandler = require("./middleware/errorHandler");
+import connectDB from "./config/db.js";
+import authRoutes from "./routes/auth.js";
+import contactRoutes from "./routes/contactRoutes.js";
+import errorHandler from "./middleware/errorHandler.js";
 
 const app = express();
 
@@ -23,6 +24,7 @@ app.get("/api/health", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/contacts", contactRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Route not found" });

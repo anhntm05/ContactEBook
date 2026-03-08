@@ -1,5 +1,5 @@
-const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+import jwt from "jsonwebtoken";
+import User from "../models/User.js";
 
 const protect = async (req, res, next) => {
   const token = req.cookies && req.cookies.token;
@@ -21,10 +21,11 @@ const protect = async (req, res, next) => {
     }
 
     req.user = user;
-    next();
+    return next();
   } catch (err) {
     return res.status(401).json({ success: false, message: "Not authorized" });
   }
 };
 
-module.exports = { protect };
+export default { protect };
+export { protect };

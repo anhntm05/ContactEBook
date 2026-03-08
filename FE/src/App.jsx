@@ -46,10 +46,26 @@ function App() {
                 }
               />
               <Route
+                path="/contact/new"
+                element={
+                  <PrivateRoute>
+                    <CreateContact />
+                  </PrivateRoute>
+                }
+              />
+              <Route
                 path="/contacts/new"
                 element={
                   <PrivateRoute>
                     <CreateContact />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/contact/:id"
+                element={
+                  <PrivateRoute>
+                    <ContactDetail />
                   </PrivateRoute>
                 }
               />
