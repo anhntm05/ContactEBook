@@ -379,7 +379,7 @@ const CreateContact = () => {
               </div>
             </div>
 
-            <div className="sticky bottom-4 z-10 flex items-center justify-end gap-3 mt-6 border-t-2 py-4 bg-white">
+            <div className="sticky bottom-0 z-10 flex items-center justify-end gap-3 mt-6 border-t-2 py-4 bg-white">
               <Button
                 type="button"
                 variant="outline"
