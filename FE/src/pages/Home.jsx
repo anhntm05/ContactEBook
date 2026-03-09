@@ -18,7 +18,7 @@ const Home = () => {
           </p>
 
           {user ? (
-            <Link to="/dashboard">
+            <Link to="/contacts">
               <Button variant="primary" className="text-lg px-8 py-3">
                 Go to Dashboard
               </Button>

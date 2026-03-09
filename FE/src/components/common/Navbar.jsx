@@ -22,6 +22,7 @@ const Navbar = () => {
           <div className="flex items-center space-x-4">
             {user ? (
               <>
+
                 <Link to="/contacts" className="text-gray-700 hover:text-blue-600">
                   Contacts
                 </Link>
