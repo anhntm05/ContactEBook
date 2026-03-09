@@ -39,18 +39,10 @@ function App() {
                 }
               />
               <Route
-                path="/dashboard"
+                path="/contacts"
                 element={
                   <PrivateRoute>
                     <Dashboard />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/contact/new"
-                element={
-                  <PrivateRoute>
-                    <CreateContact />
                   </PrivateRoute>
                 }
               />
@@ -64,14 +56,6 @@ function App() {
               />
               <Route
                 path="/contact/:id"
-                element={
-                  <PrivateRoute>
-                    <ContactDetail />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/contacts/:id"
                 element={
                   <PrivateRoute>
                     <ContactDetail />

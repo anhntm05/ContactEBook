@@ -10,44 +10,30 @@ const FILTERS = [
 const SORTS = [
   { key: "name-asc", label: "Name A-Z" },
   { key: "name-desc", label: "Name Z-A" },
-  { key: "recent-added", label: "Recently Added" },
-  { key: "recent-updated", label: "Recently Updated" },
-  { key: "favorites-first", label: "Favorites First" },
 ];
 
 const ContactFilters = ({ query, setQuery, filterKey, setFilterKey, sortKey, setSortKey }) => {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6 space-y-4">
-      <input
-        type="text"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search by name, phone, email, company, or tag"
-        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-        aria-label="Search contacts"
-      />
-
-      <div className="flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
-        <div className="flex flex-wrap gap-2">
-          {FILTERS.map((filter) => (
-            <button
-              key={filter.key}
-              type="button"
-              onClick={() => setFilterKey(filter.key)}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                filterKey === filter.key
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "bg-white text-gray-700 border-gray-300 hover:border-blue-400"
-              }`}
-            >
-              {filter.label}
-            </button>
-          ))}
+      <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
+        <div className="w-full md:flex-1">
+          <label htmlFor="contactSearch" className="sr-only">
+            Search contacts
+          </label>
+          <input
+            id="contactSearch"
+            type="text"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search by name, number, email, company, or tag"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Search contacts"
+          />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 md:shrink-0">
           <label htmlFor="sortKey" className="text-sm text-gray-600 whitespace-nowrap">
-            Sort by
+            Sort
           </label>
           <select
             id="sortKey"
@@ -62,6 +48,23 @@ const ContactFilters = ({ query, setQuery, filterKey, setFilterKey, sortKey, set
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map((filter) => (
+          <button
+            key={filter.key}
+            type="button"
+            onClick={() => setFilterKey(filter.key)}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+              filterKey === filter.key
+                ? "bg-blue-600 text-white border-blue-600"
+                : "bg-white text-gray-700 border-gray-300 hover:border-blue-400"
+            }`}
+          >
+            {filter.label}
+          </button>
+        ))}
       </div>
     </div>
   );
