@@ -10,18 +10,26 @@ const getId = (contact) => contact?._id || contact?.id;
 
 const normalizeContacts = (items) => {
   const metaMap = loadContactMetaMap();
+
   return items.map((contact) => {
     const id = getId(contact);
     const meta = metaMap[id] || {};
+
     const phoneNumbers =
       meta.phoneNumbers ||
       contact.phoneNumbers ||
       contact.phones ||
       (contact.phone ? [{ number: contact.phone, label: "Primary" }] : []);
+
     const emails =
       meta.emails ||
       contact.emails ||
       (contact.email ? [{ email: contact.email, label: "Primary" }] : []);
+
+    const fallbackName =
+      contact.name ||
+      contact.displayName ||
+      `${contact.firstName || ""} ${contact.lastName || ""}`.trim();
 
     return {
       ...contact,
@@ -29,7 +37,7 @@ const normalizeContacts = (items) => {
       name:
         meta.firstName || meta.lastName
           ? `${meta.firstName || ""} ${meta.lastName || ""}`.trim()
-          : contact.name,
+          : fallbackName || "Unnamed Contact",
       company: meta.company ?? contact.company ?? "",
       jobTitle: meta.jobTitle ?? contact.jobTitle ?? "",
       phoneNumbers,
@@ -47,9 +55,12 @@ const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [successMessage, setSuccessMessage] = useState("");
 
+  const [successMessage, setSuccessMessage] = useState("");
   const [contacts, setContacts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState("name_asc");
   const [page, setPage] = useState(1);
@@ -68,11 +79,17 @@ const Dashboard = () => {
     try {
       setLoading(true);
       setError("");
+
       const response = await api.get("/contacts");
-      const rawContacts = response.data?.data || [];
+      const rawContacts = Array.isArray(response?.data?.data)
+        ? response.data.data
+        : [];
+
       setContacts(normalizeContacts(rawContacts));
-    } catch (err) {
-      setError(err.response?.data?.message || "Failed to load contacts.");
+    } catch (fetchError) {
+      setError(
+        fetchError?.response?.data?.message || "Failed to load contacts.",
+      );
     } finally {
       setLoading(false);
     }
@@ -83,35 +100,40 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => {
-    const routeMessage =
-      location.state?.successMessage || location.state?.message;
-    if (routeMessage) {
-      setSuccessMessage(routeMessage);
-      navigate(location.pathname, { replace: true, state: null });
-    }
+    const routeMessage = location.state?.successMessage || location.state?.message;
+    if (!routeMessage) return;
+
+    setSuccessMessage(routeMessage);
+    navigate(location.pathname, { replace: true, state: null });
   }, [location.pathname, location.state, navigate]);
 
   const filteredContacts = useMemo(() => {
     const lowered = query.trim().toLowerCase();
+
     let data = contacts.filter((contact) => {
       if (!lowered) return true;
+
       const phones = (contact.phoneNumbers || [])
         .map((item) => (item.number || item).toString().toLowerCase())
         .join(" ");
-      const emails = (contact.emails || [])
+
+      const emailValues = (contact.emails || [])
         .map((item) => (item.email || item).toString().toLowerCase())
         .join(" ");
-      return [contact.name, contact.company, contact.jobTitle, phones, emails]
+
+      return [contact.name, contact.company, contact.jobTitle, phones, emailValues]
         .join(" ")
         .toLowerCase()
         .includes(lowered);
     });
 
     data = [...data].sort((a, b) => {
-      if (sortBy === "recent")
+      if (sortBy === "recent") {
         return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
-      if (sortBy === "company")
+      }
+      if (sortBy === "company") {
         return (a.company || "").localeCompare(b.company || "");
+      }
       return (a.name || "").localeCompare(b.name || "");
     });
 
@@ -126,16 +148,14 @@ const Dashboard = () => {
   }, [page, totalPages]);
 
   useEffect(() => {
-    const validIds = new Set(
-      contacts.map((contact) => getId(contact)).filter(Boolean),
-    );
+    const validIds = new Set(contacts.map((contact) => getId(contact)).filter(Boolean));
     setSelectedIds((prev) => {
       const next = new Set([...prev].filter((id) => validIds.has(id)));
       return next.size === prev.size ? prev : next;
     });
   }, [contacts]);
 
-  const pagedContacts = useMemo(() => {
+  const visibleContacts = useMemo(() => {
     const start = (currentPage - 1) * perPage;
     return filteredContacts.slice(start, start + perPage);
   }, [filteredContacts, currentPage, perPage]);
@@ -150,21 +170,51 @@ const Dashboard = () => {
     const favorites = contacts.filter(
       (item) => item.favorite || (item.tags || []).includes("Favorite"),
     ).length;
+
     const recentlyAdded = contacts.filter(
       (item) => item.createdAt && new Date(item.createdAt) > recentThreshold,
     ).length;
+
     const activeContacts = contacts.filter((item) => {
       const source = item.updatedAt || item.lastInteractedAt || item.createdAt;
       return source && new Date(source) > activeThreshold;
     }).length;
 
-    return { total, recentlyAdded };
+    return {
+      total: contacts.length,
+      favorites,
+      recentlyAdded,
+      activeContacts,
+    };
   }, [contacts]);
 
-  const exportTarget = useMemo(() => {
-    if (selectedContacts.length > 0) return selectedContacts;
-    return visibleContacts;
-  }, [selectedContacts, visibleContacts]);
+  const handleToggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = (checked) => {
+    const visibleIds = visibleContacts.map((contact) => getId(contact)).filter(Boolean);
+
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      visibleIds.forEach((id) => {
+        if (checked) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
+  };
+
+  const askDelete = (ids, label) => {
+    if (!ids.length) return;
+    setDeleteError("");
+    setDeleteDialog({ open: true, ids, label });
+  };
 
   const confirmDelete = async () => {
     if (!deleteDialog.ids.length) {
@@ -174,11 +224,11 @@ const Dashboard = () => {
 
     setDeleteLoading(true);
     setDeleteError("");
+
     try {
-      await Promise.all(
-        deleteDialog.ids.map((id) => api.delete(`/contacts/${id}`)),
-      );
+      await Promise.all(deleteDialog.ids.map((id) => api.delete(`/contacts/${id}`)));
       deleteDialog.ids.forEach((id) => removeContactMeta(id));
+
       setSelectedIds(new Set());
       setDeleteDialog({ open: false, ids: [], label: "" });
       setSuccessMessage(
@@ -186,18 +236,20 @@ const Dashboard = () => {
           ? "Contacts deleted successfully."
           : "Contact deleted successfully.",
       );
+
       await fetchContacts();
-    } catch (err) {
+    } catch (deleteRequestError) {
       setDeleteError(
-        err.response?.data?.message || "Failed to delete selected contacts.",
+        deleteRequestError?.response?.data?.message ||
+          "Failed to delete selected contacts.",
       );
     } finally {
-      setExporting(false);
+      setDeleteLoading(false);
     }
   };
 
   const exportSelected = () => {
-    const rows = contacts.filter((item) => selectedIds.has(item.id));
+    const rows = contacts.filter((item) => selectedIds.has(item.id || getId(item)));
     if (!rows.length) return;
 
     const csv = ["Name,Company,Primary Phone,Primary Email"]
@@ -228,28 +280,28 @@ const Dashboard = () => {
       value: stats.total,
       helper: "All saved contacts",
       accent: "bg-blue-50 text-blue-700",
-      icon: "👥",
+      icon: "TC",
     },
     {
       label: "Recently Added",
       value: stats.recentlyAdded,
       helper: "Added in the last 7 days",
       accent: "bg-indigo-50 text-indigo-700",
-      icon: "🕒",
+      icon: "RA",
     },
     {
       label: "Favorites",
       value: stats.favorites,
       helper: "Starred contacts",
       accent: "bg-amber-50 text-amber-700",
-      icon: "⭐",
+      icon: "FV",
     },
     {
       label: "Active Contacts",
       value: stats.activeContacts,
       helper: "Updated in the last 30 days",
       accent: "bg-emerald-50 text-emerald-700",
-      icon: "✅",
+      icon: "AC",
     },
   ];
 
@@ -259,17 +311,16 @@ const Dashboard = () => {
         <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-6 md:p-8 text-white shadow-lg">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm font-medium text-blue-100">
-                Dashboard Overview
-              </p>
+              <p className="text-sm font-medium text-blue-100">Dashboard Overview</p>
               <h1 className="text-3xl font-bold mt-1">
                 Welcome back, {user?.username || "User"}
               </h1>
               <p className="text-blue-100 mt-2">
-                Track your contacts, discover important updates, and manage
-                everything in one place.
+                Track your contacts, discover important updates, and manage everything in one
+                place.
               </p>
             </div>
+
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 variant="primary"
@@ -278,11 +329,9 @@ const Dashboard = () => {
               >
                 Add New Contact
               </Button>
+
               <div className="rounded-lg bg-white/15 px-4 py-2 text-sm backdrop-blur-sm">
-                Signed in as{" "}
-                <span className="font-semibold">
-                  {user?.email || "Profile"}
-                </span>
+                Signed in as <span className="font-semibold">{user?.email || "Profile"}</span>
               </div>
             </div>
           </div>
@@ -293,6 +342,7 @@ const Dashboard = () => {
             {successMessage}
           </div>
         )}
+
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
             {error}
@@ -308,14 +358,10 @@ const Dashboard = () => {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-sm text-slate-500">{card.label}</p>
-                  <p className="mt-2 text-3xl font-bold text-slate-800">
-                    {card.value}
-                  </p>
+                  <p className="mt-2 text-3xl font-bold text-slate-800">{card.value}</p>
                   <p className="mt-1 text-xs text-slate-500">{card.helper}</p>
                 </div>
-                <span
-                  className={`rounded-lg px-2.5 py-1 text-base ${card.accent}`}
-                >
+                <span className={`rounded-lg px-2.5 py-1 text-base ${card.accent}`}>
                   {card.icon}
                 </span>
               </div>
@@ -326,9 +372,7 @@ const Dashboard = () => {
         <section className="rounded-2xl bg-white shadow-md border border-slate-200 p-4 md:p-5 space-y-4">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
             <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-600">
-                Search Contacts
-              </span>
+              <span className="mb-1 block text-sm font-medium text-slate-600">Search Contacts</span>
               <input
                 type="text"
                 value={query}
@@ -342,9 +386,7 @@ const Dashboard = () => {
             </label>
 
             <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-600">
-                Sort by
-              </span>
+              <span className="mb-1 block text-sm font-medium text-slate-600">Sort by</span>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
@@ -357,12 +399,8 @@ const Dashboard = () => {
             </label>
 
             <div className="text-sm text-slate-600 rounded-lg bg-slate-100 px-3 py-2.5">
-              Showing{" "}
-              <span className="font-semibold text-slate-800">
-                {filteredContacts.length}
-              </span>{" "}
-              result
-              {filteredContacts.length === 1 ? "" : "s"}
+              Showing <span className="font-semibold text-slate-800">{filteredContacts.length}</span>{" "}
+              result{filteredContacts.length === 1 ? "" : "s"}
             </div>
           </div>
 
@@ -370,28 +408,24 @@ const Dashboard = () => {
             <div className="text-sm text-slate-600">
               {selectedIds.size > 0 ? (
                 <span>
-                  <span className="font-semibold text-slate-800">
-                    {selectedIds.size}
-                  </span>{" "}
-                  selected
+                  <span className="font-semibold text-slate-800">{selectedIds.size}</span> selected
                 </span>
               ) : (
                 "Select contacts to bulk-delete or export"
               )}
             </div>
+
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 disabled={selectedIds.size === 0}
                 onClick={() =>
-                  askDelete(
-                    Array.from(selectedIds),
-                    `${selectedIds.size} selected contacts`,
-                  )
+                  askDelete(Array.from(selectedIds), `${selectedIds.size} selected contacts`)
                 }
               >
                 Delete Selected
               </Button>
+
               <Button
                 variant="outline"
                 disabled={selectedIds.size === 0}
@@ -402,140 +436,57 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
-            <div className="text-sm text-slate-600">
-              {selectedIds.size > 0 ? (
-                <span>
-                  <span className="font-semibold text-slate-800">
-                    {selectedIds.size}
-                  </span>{" "}
-                  selected
-                </span>
-              ) : (
-                "Select contacts to bulk-delete or export"
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                disabled={selectedIds.size === 0}
-                onClick={() =>
-                  askDelete(
-                    Array.from(selectedIds),
-                    `${selectedIds.size} selected contacts`,
-                  )
-                }
-              >
-                Delete Selected
-              </Button>
-              <Button
-                variant="outline"
-                disabled={selectedIds.size === 0}
-                onClick={exportSelected}
-              >
-                Export CSV
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
-            <div className="text-sm text-slate-600">
-              {selectedIds.size > 0 ? (
-                <span>
-                  <span className="font-semibold text-slate-800">
-                    {selectedIds.size}
-                  </span>{" "}
-                  selected
-                </span>
-              ) : (
-                "Select contacts to bulk-delete or export"
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                disabled={selectedIds.size === 0}
-                onClick={() =>
-                  askDelete(
-                    Array.from(selectedIds),
-                    `${selectedIds.size} selected contacts`,
-                  )
-                }
-              >
-                Delete Selected
-              </Button>
-              <Button
-                variant="outline"
-                disabled={selectedIds.size === 0}
-                onClick={exportSelected}
-              >
-                Export CSV
-              </Button>
-            </div>
-          </div>
-
-          {!loading && visibleContacts.length > 0 ? (
-            <ContactTable
-              contacts={visibleContacts}
-              selectedIds={selectedIds}
-              onToggleSelect={handleToggleSelect}
-              onToggleSelectAll={handleToggleSelectAll}
-              onView={(contact) =>
-                navigate(`/contacts/${contact.id || getId(contact)}`)
-              }
-              onEdit={(contact) =>
-                navigate(`/contacts/${contact.id || getId(contact)}`, {
-                  state: { startEdit: true },
-                })
-              }
-              onDelete={(contact) =>
-                askDelete(
-                  [contact.id || getId(contact)],
-                  contact.name || "this contact",
-                )
-              }
-              page={currentPage}
-              total={filteredContacts.length}
-              perPage={perPage}
-              onPageChange={setPage}
-              onPerPageChange={(value) => {
-                setPerPage(value);
-                setPage(1);
-              }}
-            />
-          ) : null}
+          <ContactList
+            loading={loading}
+            contacts={visibleContacts}
+            selectedIds={selectedIds}
+            onToggleSelect={handleToggleSelect}
+            onToggleSelectAll={handleToggleSelectAll}
+            onView={(contact) => navigate(`/contacts/${contact.id || getId(contact)}`)}
+            onEdit={(contact) =>
+              navigate(`/contacts/${contact.id || getId(contact)}`, {
+                state: { startEdit: true },
+              })
+            }
+            onDelete={(contact) =>
+              askDelete([contact.id || getId(contact)], contact.name || "this contact")
+            }
+            page={currentPage}
+            total={filteredContacts.length}
+            perPage={perPage}
+            onPageChange={setPage}
+            onPerPageChange={(value) => {
+              setPerPage(value);
+              setPage(1);
+            }}
+          />
         </section>
       </div>
 
       {deleteDialog.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <h2 className="text-xl font-bold text-gray-800 mb-2">
-              Confirm Delete
-            </h2>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Confirm Delete</h2>
             <p className="text-gray-600 mb-4">
               Delete {deleteDialog.label}? This action cannot be undone.
             </p>
+
             {deleteError && (
               <div className="rounded border border-red-300 bg-red-100 px-3 py-2 text-red-700 mb-3">
                 {deleteError}
               </div>
             )}
+
             <div className="flex justify-end gap-3">
               <Button
                 variant="outline"
                 disabled={deleteLoading}
-                onClick={() =>
-                  setDeleteDialog({ open: false, ids: [], label: "" })
-                }
+                onClick={() => setDeleteDialog({ open: false, ids: [], label: "" })}
               >
                 Cancel
               </Button>
-              <Button
-                variant="danger"
-                loading={deleteLoading}
-                onClick={confirmDelete}
-              >
+
+              <Button variant="danger" loading={deleteLoading} onClick={confirmDelete}>
                 Confirm Delete
               </Button>
             </div>
