@@ -1,4 +1,5 @@
 import { getPrimaryEmail, getPrimaryPhone } from "./contactDisplay";
+import * as XLSX from "xlsx";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -51,30 +52,19 @@ export const exportContactsToExcel = (contacts, filePrefix = "contacts") => {
   const rows = contacts.map(flattenContact);
   if (!rows.length) return;
 
-  const headers = Object.keys(rows[0]);
-  const tableRows = rows
-    .map(
-      (row) =>
-        `<tr>${headers
-          .map((header) => `<td>${`${row[header] ?? ""}`.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</td>`)
-          .join("")}</tr>`
-    )
-    .join("");
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Contacts");
 
-  const html = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head><meta charset="UTF-8" /></head>
-      <body>
-        <table>
-          <tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr>
-          ${tableRows}
-        </table>
-      </body>
-    </html>
-  `;
+  const workbookBytes = XLSX.write(workbook, {
+    bookType: "xlsx",
+    type: "array",
+  });
 
   downloadBlob(
-    new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" }),
+    new Blob([workbookBytes], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
     `${filePrefix}-${today()}.xlsx`
   );
 };

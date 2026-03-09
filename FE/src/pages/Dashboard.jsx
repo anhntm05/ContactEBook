@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import ContactList from "../components/contacts/ContactList";
+import ExportContactsMenu from "../components/contacts/ExportContactsMenu";
 import Button from "../components/common/Button";
 import api from "../utils/api";
+import { exportContactsToCSV, exportContactsToExcel } from "../utils/contactExport";
 import { loadContactMetaMap, removeContactMeta } from "../utils/contactMeta";
 
 const getId = (contact) => contact?._id || contact?.id;
@@ -60,6 +62,7 @@ const Dashboard = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activeTab, setActiveTab] = useState("contacts");
 
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState("name_asc");
@@ -74,6 +77,7 @@ const Dashboard = () => {
   });
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   const fetchContacts = async () => {
     try {
@@ -251,30 +255,62 @@ const Dashboard = () => {
     }
   };
 
-  const exportSelected = () => {
-    const rows = contacts.filter((item) => selectedIds.has(item.id || getId(item)));
-    if (!rows.length) return;
+  const getSelectedContacts = () =>
+    contacts.filter((item) => selectedIds.has(item.id || getId(item)));
 
-    const csv = ["Name,Company,Primary Phone,Primary Email"]
-      .concat(
-        rows.map(
-          (row) =>
-            `${JSON.stringify(row.name || "")},${JSON.stringify(
-              row.company || "",
-            )},${JSON.stringify(row.phoneNumbers?.[0]?.number || "")},${JSON.stringify(
-              row.emails?.[0]?.email || "",
-            )}`,
-        ),
-      )
-      .join("\n");
+  const mapContactForExport = (contact) => {
+    const phones = (contact.phoneNumbers || contact.phones || [])
+      .map((item) => ({
+        label: item?.label || "Primary",
+        value: item?.value || item?.number || "",
+        isPrimary: !!item?.isPrimary,
+      }))
+      .filter((item) => item.value);
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "contacts-export.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+    const emails = (contact.emails || [])
+      .map((item) => ({
+        label: item?.label || "Primary",
+        value: item?.value || item?.email || "",
+        isPrimary: !!item?.isPrimary,
+      }))
+      .filter((item) => item.value);
+
+    return {
+      displayName:
+        contact.displayName ||
+        contact.name ||
+        `${contact.firstName || ""} ${contact.lastName || ""}`.trim() ||
+        "Unnamed Contact",
+      firstName: contact.firstName || "",
+      lastName: contact.lastName || "",
+      nickname: contact.nickname || "",
+      phones,
+      emails,
+      company: contact.company || "",
+      jobTitle: contact.jobTitle || "",
+      tags: Array.isArray(contact.tags) ? contact.tags : [],
+      favorite: !!contact.favorite,
+      notes: contact.notes || "",
+    };
+  };
+
+  const runExport = async (format) => {
+    const selectedContacts = getSelectedContacts();
+    if (!selectedContacts.length) return;
+
+    const exportData = selectedContacts.map(mapContactForExport);
+
+    setExporting(true);
+    try {
+      if (format === "excel") {
+        exportContactsToExcel(exportData, "contacts-export");
+        return;
+      }
+
+      exportContactsToCSV(exportData, "contacts-export");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const statCards = [
@@ -310,30 +346,30 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="container mx-auto max-w-[96rem] px-4 py-5 space-y-4">
-        <section className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 p-4 md:p-5 text-white shadow-md">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="container mx-auto max-w-7xl px-4 py-8 space-y-6">
+        <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-6 md:p-8 text-white shadow-lg">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-blue-100">Dashboard</p>
-              <h1 className="text-xl md:text-2xl font-bold mt-1">
+              <p className="text-sm font-medium text-blue-100">Dashboard Overview</p>
+              <h1 className="text-3xl font-bold mt-1">
                 Welcome back, {user?.username || "User"}
               </h1>
-              <p className="text-sm text-blue-100 mt-1">
+              <p className="text-blue-100 mt-2">
                 Track your contacts, discover important updates, and manage everything in one
                 place.
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col sm:flex-row gap-3">
               <Button
                 variant="primary"
                 onClick={() => navigate("/contacts/new")}
-                className="bg-white !text-blue-700 hover:!bg-blue-50 !px-4 !py-2 text-sm"
+                className="bg-white !text-blue-700 hover:!bg-blue-50"
               >
                 Add New Contact
               </Button>
 
-              <div className="rounded-lg bg-white/15 px-3 py-2 text-xs md:text-sm backdrop-blur-sm">
+              <div className="rounded-lg bg-white/15 px-4 py-2 text-sm backdrop-blur-sm">
                 Signed in as <span className="font-semibold">{user?.email || "Profile"}</span>
               </div>
             </div>
@@ -352,119 +388,151 @@ const Dashboard = () => {
           </div>
         )}
 
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {statCards.map((card) => (
-            <article
-              key={card.label}
-              className="rounded-lg bg-white shadow-sm border border-slate-200 p-3.5"
+        <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-2">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveTab("contacts")}
+              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                activeTab === "contacts"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs text-slate-500">{card.label}</p>
-                  <p className="mt-1 text-xl md:text-2xl font-bold text-slate-800">{card.value}</p>
-                  <p className="mt-1 text-[11px] text-slate-500 leading-tight">{card.helper}</p>
+              Contact List
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("statistics")}
+              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                activeTab === "statistics"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              Statistics
+            </button>
+          </div>
+        </section>
+
+        {activeTab === "statistics" ? (
+          <section className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            {statCards.map((card) => (
+              <article
+                key={card.label}
+                className="rounded-xl bg-white shadow-sm border border-slate-200 p-5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-slate-500">{card.label}</p>
+                    <p className="mt-2 text-3xl font-bold text-slate-800">{card.value}</p>
+                    <p className="mt-1 text-xs text-slate-500">{card.helper}</p>
+                  </div>
+                  <span className={`rounded-lg px-2.5 py-1 text-base ${card.accent}`}>
+                    {card.icon}
+                  </span>
                 </div>
-                <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${card.accent}`}>
-                  {card.icon}
+              </article>
+            ))}
+          </section>
+        ) : (
+          <section className="rounded-2xl bg-white shadow-md border border-slate-200 p-4 md:p-5 space-y-4">
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-600">
+                  Search Contacts
                 </span>
+                <input
+                  type="text"
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Search by name, phone, email, company..."
+                  className="w-full rounded-lg border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-600">Sort by</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="name_asc">Name (A-Z)</option>
+                  <option value="name_desc">Name (Z-A)</option>
+                  <option value="recent">Recently Added</option>
+                  <option value="company">Company</option>
+                </select>
+              </label>
+
+              <div className="text-sm text-slate-600 rounded-lg bg-slate-100 px-3 py-2.5">
+                Showing <span className="font-semibold text-slate-800">{filteredContacts.length}</span>{" "}
+                result{filteredContacts.length === 1 ? "" : "s"}
               </div>
-            </article>
-          ))}
-        </section>
-
-        <section className="rounded-xl bg-white shadow-md border border-slate-200 p-4 space-y-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-600">Search Contacts</span>
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setPage(1);
-                }}
-                placeholder="Search by name, phone, email, company..."
-                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </label>
-
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-slate-600">Sort by</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="name_asc">Name (A-Z)</option>
-                <option value="name_desc">Name (Z-A)</option>
-                <option value="recent">Recently Added</option>
-                <option value="company">Company</option>
-              </select>
-            </label>
-
-            <div className="text-sm text-slate-600 rounded-lg bg-slate-100 px-3 py-2.5">
-              Showing <span className="font-semibold text-slate-800">{filteredContacts.length}</span>{" "}
-              result{filteredContacts.length === 1 ? "" : "s"}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
-            <div className="text-sm text-slate-600">
-              {selectedIds.size > 0 ? (
-                <span>
-                  <span className="font-semibold text-slate-800">{selectedIds.size}</span> selected
-                </span>
-              ) : (
-                "Select contacts to bulk-delete or export"
-              )}
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="danger"
-                disabled={selectedIds.size === 0}
-                onClick={() =>
-                  askDelete(Array.from(selectedIds), `${selectedIds.size} selected contacts`)
-                }
-              >
-                Delete Selected
-              </Button>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+              <div className="text-sm text-slate-600">
+                {selectedIds.size > 0 ? (
+                  <span>
+                    <span className="font-semibold text-slate-800">{selectedIds.size}</span>{" "}
+                    selected
+                  </span>
+                ) : (
+                  "Select contacts to bulk-delete or export"
+                )}
+              </div>
 
-              <Button
-                variant="outline"
-                disabled={selectedIds.size === 0}
-                onClick={exportSelected}
-              >
-                Export CSV
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="danger"
+                  disabled={selectedIds.size === 0}
+                  onClick={() =>
+                    askDelete(Array.from(selectedIds), `${selectedIds.size} selected contacts`)
+                  }
+                >
+                  Delete Selected
+                </Button>
+
+                <ExportContactsMenu
+                  label="Export"
+                  exporting={exporting}
+                  disabled={selectedIds.size === 0}
+                  onExportCSV={() => runExport("csv")}
+                  onExportExcel={() => runExport("excel")}
+                />
+              </div>
             </div>
-          </div>
 
-          <ContactList
-            loading={loading}
-            contacts={visibleContacts}
-            selectedIds={selectedIds}
-            onToggleSelect={handleToggleSelect}
-            onToggleSelectAll={handleToggleSelectAll}
-            onView={(contact) => navigate(`/contacts/${contact.id || getId(contact)}`)}
-            onEdit={(contact) =>
-              navigate(`/contacts/${contact.id || getId(contact)}`, {
-                state: { startEdit: true },
-              })
-            }
-            onDelete={(contact) =>
-              askDelete([contact.id || getId(contact)], contact.name || "this contact")
-            }
-            page={currentPage}
-            total={filteredContacts.length}
-            perPage={perPage}
-            onPageChange={setPage}
-            onPerPageChange={(value) => {
-              setPerPage(value);
-              setPage(1);
-            }}
-          />
-        </section>
+            <ContactList
+              loading={loading}
+              contacts={visibleContacts}
+              selectedIds={selectedIds}
+              onToggleSelect={handleToggleSelect}
+              onToggleSelectAll={handleToggleSelectAll}
+              onView={(contact) => navigate(`/contacts/${contact.id || getId(contact)}`)}
+              onEdit={(contact) =>
+                navigate(`/contacts/${contact.id || getId(contact)}`, {
+                  state: { startEdit: true },
+                })
+              }
+              onDelete={(contact) =>
+                askDelete([contact.id || getId(contact)], contact.name || "this contact")
+              }
+              page={currentPage}
+              total={filteredContacts.length}
+              perPage={perPage}
+              onPageChange={setPage}
+              onPerPageChange={(value) => {
+                setPerPage(value);
+                setPage(1);
+              }}
+            />
+          </section>
+        )}
       </div>
 
       {deleteDialog.open && (
