@@ -1,7 +1,16 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import Button from "../components/common/Button";
+import { useAuth } from "../context/AuthContext";
 
 const NotFound = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  const getFallbackPath = () => {
+    if (user) return "/contacts";
+    return "/";
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <div className="text-center">
@@ -10,9 +19,9 @@ const NotFound = () => {
         <p className="text-gray-600 mt-2 mb-6">
           The page you're looking for doesn't exist.
         </p>
-        <Link to="/">
-          <Button variant="primary">Go Home</Button>
-        </Link>
+        <Button variant="primary" onClick={() => navigate(getFallbackPath())}>
+          {user ? "Go to Contacts" : "Go Home"}
+        </Button>
       </div>
     </div>
   );

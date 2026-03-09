@@ -10,6 +10,7 @@ import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import CreateContact from "./pages/CreateContact";
 import ContactDetail from "./pages/ContactDetail";
+import ContactListPage from "./pages/ContactListPage";
 import NotFound from "./pages/NotFound";
 
 function App() {
@@ -38,18 +39,10 @@ function App() {
                 }
               />
               <Route
-                path="/dashboard"
+                path="/contacts"
                 element={
                   <PrivateRoute>
                     <Dashboard />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/contact/new"
-                element={
-                  <PrivateRoute>
-                    <CreateContact />
                   </PrivateRoute>
                 }
               />
@@ -63,14 +56,6 @@ function App() {
               />
               <Route
                 path="/contact/:id"
-                element={
-                  <PrivateRoute>
-                    <ContactDetail />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/contacts/:id"
                 element={
                   <PrivateRoute>
                     <ContactDetail />

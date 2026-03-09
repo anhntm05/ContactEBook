@@ -46,7 +46,7 @@ const Login = () => {
     setLoading(false);
 
     if (result.success) {
-      navigate("/dashboard");
+      navigate("/contacts", { state: { successMessage: "Logged in successfully!" } });
     } else {
       setErrors({ general: result.error });
     }

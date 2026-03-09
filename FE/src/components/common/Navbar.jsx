@@ -22,8 +22,9 @@ const Navbar = () => {
           <div className="flex items-center space-x-4">
             {user ? (
               <>
-                <Link to="/dashboard" className="text-gray-700 hover:text-blue-600">
-                  Dashboard
+
+                <Link to="/contacts" className="text-gray-700 hover:text-blue-600">
+                  Contacts
                 </Link>
                 <span className="text-gray-600">Hi, {user.username}</span>
                 <Button onClick={handleLogout} variant="outline">
