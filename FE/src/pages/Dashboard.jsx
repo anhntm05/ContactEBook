@@ -131,6 +131,9 @@ const Dashboard = () => {
       if (sortBy === "recent") {
         return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
       }
+      if (sortBy === "name_desc") {
+        return (b.name || "").localeCompare(a.name || "");
+      }
       if (sortBy === "company") {
         return (a.company || "").localeCompare(b.company || "");
       }
@@ -307,30 +310,30 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <div className="container mx-auto max-w-7xl px-4 py-8 space-y-6">
-        <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-6 md:p-8 text-white shadow-lg">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+      <div className="container mx-auto max-w-[96rem] px-4 py-5 space-y-4">
+        <section className="rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 p-4 md:p-5 text-white shadow-md">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm font-medium text-blue-100">Dashboard Overview</p>
-              <h1 className="text-3xl font-bold mt-1">
+              <p className="text-xs font-medium uppercase tracking-wide text-blue-100">Dashboard</p>
+              <h1 className="text-xl md:text-2xl font-bold mt-1">
                 Welcome back, {user?.username || "User"}
               </h1>
-              <p className="text-blue-100 mt-2">
+              <p className="text-sm text-blue-100 mt-1">
                 Track your contacts, discover important updates, and manage everything in one
                 place.
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 variant="primary"
                 onClick={() => navigate("/contacts/new")}
-                className="bg-white !text-blue-700 hover:!bg-blue-50"
+                className="bg-white !text-blue-700 hover:!bg-blue-50 !px-4 !py-2 text-sm"
               >
                 Add New Contact
               </Button>
 
-              <div className="rounded-lg bg-white/15 px-4 py-2 text-sm backdrop-blur-sm">
+              <div className="rounded-lg bg-white/15 px-3 py-2 text-xs md:text-sm backdrop-blur-sm">
                 Signed in as <span className="font-semibold">{user?.email || "Profile"}</span>
               </div>
             </div>
@@ -349,19 +352,19 @@ const Dashboard = () => {
           </div>
         )}
 
-        <section className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {statCards.map((card) => (
             <article
               key={card.label}
-              className="rounded-xl bg-white shadow-sm border border-slate-200 p-5"
+              className="rounded-lg bg-white shadow-sm border border-slate-200 p-3.5"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm text-slate-500">{card.label}</p>
-                  <p className="mt-2 text-3xl font-bold text-slate-800">{card.value}</p>
-                  <p className="mt-1 text-xs text-slate-500">{card.helper}</p>
+                  <p className="text-xs text-slate-500">{card.label}</p>
+                  <p className="mt-1 text-xl md:text-2xl font-bold text-slate-800">{card.value}</p>
+                  <p className="mt-1 text-[11px] text-slate-500 leading-tight">{card.helper}</p>
                 </div>
-                <span className={`rounded-lg px-2.5 py-1 text-base ${card.accent}`}>
+                <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${card.accent}`}>
                   {card.icon}
                 </span>
               </div>
@@ -369,7 +372,7 @@ const Dashboard = () => {
           ))}
         </section>
 
-        <section className="rounded-2xl bg-white shadow-md border border-slate-200 p-4 md:p-5 space-y-4">
+        <section className="rounded-xl bg-white shadow-md border border-slate-200 p-4 space-y-4">
           <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-slate-600">Search Contacts</span>
@@ -381,7 +384,7 @@ const Dashboard = () => {
                   setPage(1);
                 }}
                 placeholder="Search by name, phone, email, company..."
-                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </label>
 
@@ -393,6 +396,7 @@ const Dashboard = () => {
                 className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="name_asc">Name (A-Z)</option>
+                <option value="name_desc">Name (Z-A)</option>
                 <option value="recent">Recently Added</option>
                 <option value="company">Company</option>
               </select>
@@ -417,7 +421,7 @@ const Dashboard = () => {
 
             <div className="flex flex-wrap gap-2">
               <Button
-                variant="outline"
+                variant="danger"
                 disabled={selectedIds.size === 0}
                 onClick={() =>
                   askDelete(Array.from(selectedIds), `${selectedIds.size} selected contacts`)
