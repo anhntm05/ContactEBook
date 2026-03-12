@@ -44,7 +44,7 @@ const normalizePhones = (phones = []) =>
     .map((phone) => ({
       label: phone?.label || "mobile",
       value: phone?.value || "",
-      number: phone?.value || "",
+      // number: phone?.value || "",
       isPrimary: !!phone?.isPrimary,
     }))
     .filter((phone) => phone.value);
@@ -55,7 +55,7 @@ const normalizeEmails = (emails = []) =>
     .map((email) => ({
       label: email?.label || "personal",
       value: email?.value || "",
-      email: email?.value || "",
+      // email: email?.value || "",
       isPrimary: !!email?.isPrimary,
     }))
     .filter((email) => email.value);
