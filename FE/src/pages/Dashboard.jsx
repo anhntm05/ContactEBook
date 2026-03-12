@@ -5,7 +5,11 @@ import ContactList from "../components/contacts/ContactList";
 import ExportContactsMenu from "../components/contacts/ExportContactsMenu";
 import Button from "../components/common/Button";
 import api from "../utils/api";
-import { exportContactsToCSV, exportContactsToExcel } from "../utils/contactExport";
+import {
+  exportContactsToCSV,
+  exportContactsToExcel,
+  exportContactsToVCard,
+} from "../utils/contactExport";
 import { loadContactMetaMap, removeContactMeta } from "../utils/contactMeta";
 
 const getId = (contact) => contact?._id || contact?.id;
@@ -282,12 +286,21 @@ const Dashboard = () => {
         `${contact.firstName || ""} ${contact.lastName || ""}`.trim() ||
         "Unnamed Contact",
       firstName: contact.firstName || "",
+      middleName: contact.middleName || "",
       lastName: contact.lastName || "",
       nickname: contact.nickname || "",
+      photoUrl: contact.photoUrl || "",
       phones,
       emails,
       company: contact.company || "",
       jobTitle: contact.jobTitle || "",
+      department: contact.department || "",
+      addresses: Array.isArray(contact.addresses) ? contact.addresses : [],
+      website: contact.website || "",
+      socialLinks: Array.isArray(contact.socialLinks) ? contact.socialLinks : [],
+      birthday: contact.birthday || "",
+      anniversary: contact.anniversary || "",
+      spouseName: contact.spouseName || "",
       tags: Array.isArray(contact.tags) ? contact.tags : [],
       favorite: !!contact.favorite,
       notes: contact.notes || "",
@@ -304,6 +317,11 @@ const Dashboard = () => {
     try {
       if (format === "excel") {
         exportContactsToExcel(exportData, "contacts-export");
+        return;
+      }
+
+      if (format === "vcf") {
+        exportContactsToVCard(exportData, "contacts-export");
         return;
       }
 
@@ -488,7 +506,8 @@ const Dashboard = () => {
 
               <div className="flex flex-wrap gap-2">
                 <Button
-                  variant="danger"
+                  variant="outline"
+                  className="border-red-600 text-red-600 hover:!bg-red-600 hover:!text-white hover:!border-red-600"
                   disabled={selectedIds.size === 0}
                   onClick={() =>
                     askDelete(Array.from(selectedIds), `${selectedIds.size} selected contacts`)
@@ -503,6 +522,8 @@ const Dashboard = () => {
                   disabled={selectedIds.size === 0}
                   onExportCSV={() => runExport("csv")}
                   onExportExcel={() => runExport("excel")}
+                  onExportVCard={() => runExport("vcf")}
+                  buttonClassName="hover:!bg-blue-600 hover:!text-white hover:!border-blue-600"
                 />
               </div>
             </div>
