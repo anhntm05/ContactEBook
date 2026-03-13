@@ -395,28 +395,44 @@ const Dashboard = () => {
       label: "Total Contacts",
       value: stats.total,
       helper: "All saved contacts",
-      accent: "bg-blue-50 text-blue-700",
+      cardClassName: "border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-100",
+      valueClassName: "text-blue-900",
+      labelClassName: "text-blue-700",
+      helperClassName: "text-blue-600",
+      accent: "bg-blue-600 text-white",
       icon: "TC",
     },
     {
       label: "Recently Added",
       value: stats.recentlyAdded,
       helper: "Added in the last 7 days",
-      accent: "bg-indigo-50 text-indigo-700",
+      cardClassName: "border-emerald-200 bg-gradient-to-br from-emerald-50 to-lime-100",
+      valueClassName: "text-emerald-900",
+      labelClassName: "text-emerald-700",
+      helperClassName: "text-emerald-600",
+      accent: "bg-emerald-600 text-white",
       icon: "RA",
     },
     {
       label: "Favorites",
       value: stats.favorites,
       helper: "Starred contacts",
-      accent: "bg-amber-50 text-amber-700",
+      cardClassName: "border-purple-200 bg-gradient-to-br from-purple-50 to-fuchsia-100",
+      valueClassName: "text-purple-900",
+      labelClassName: "text-purple-700",
+      helperClassName: "text-purple-600",
+      accent: "bg-purple-600 text-white",
       icon: "FV",
     },
     {
       label: "Active Contacts",
       value: stats.activeContacts,
       helper: "Updated in the last 30 days",
-      accent: "bg-emerald-50 text-emerald-700",
+      cardClassName: "border-amber-200 bg-gradient-to-br from-amber-50 to-orange-100",
+      valueClassName: "text-amber-900",
+      labelClassName: "text-amber-700",
+      helperClassName: "text-amber-600",
+      accent: "bg-amber-500 text-white",
       icon: "AC",
     },
   ];
@@ -483,7 +499,7 @@ const Dashboard = () => {
               onClick={() => setActiveTab("statistics")}
               className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
                 activeTab === "statistics"
-                  ? "bg-blue-600 text-white shadow-sm"
+                  ? "bg-purple-600 text-white shadow-sm"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
               }`}
             >
@@ -497,15 +513,23 @@ const Dashboard = () => {
             {statCards.map((card) => (
               <article
                 key={card.label}
-                className="rounded-xl bg-white shadow-sm border border-slate-200 p-5"
+                className={`rounded-2xl border p-5 shadow-sm ${card.cardClassName}`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm text-slate-500">{card.label}</p>
-                    <p className="mt-2 text-3xl font-bold text-slate-800">{card.value}</p>
-                    <p className="mt-1 text-xs text-slate-500">{card.helper}</p>
+                    <p className={`text-sm font-semibold ${card.labelClassName}`}>
+                      {card.label}
+                    </p>
+                    <p className={`mt-2 text-3xl font-bold ${card.valueClassName}`}>
+                      {card.value}
+                    </p>
+                    <p className={`mt-1 text-xs ${card.helperClassName}`}>
+                      {card.helper}
+                    </p>
                   </div>
-                  <span className={`rounded-lg px-2.5 py-1 text-base ${card.accent}`}>
+                  <span
+                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold shadow-sm ${card.accent}`}
+                  >
                     {card.icon}
                   </span>
                 </div>
