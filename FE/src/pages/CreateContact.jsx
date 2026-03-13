@@ -1,9 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import ContactPhotoPicker from "../components/contacts/ContactPhotoPicker";
 import Input from "../components/common/Input";
 import Button from "../components/common/Button";
 import api from "../utils/api";
 import { upsertContactMeta } from "../utils/contactMeta";
+import {
+  buildContactUploadFormData,
+  validateContactPhotoFile,
+} from "../utils/contactMedia";
 
 const initialFormData = {
   displayName: "",
@@ -16,7 +21,6 @@ const initialFormData = {
   email: "",
   emailLabel: "personal",
   website: "",
-  photoUrl: "",
   notes: "",
   favorite: false,
 };
@@ -62,7 +66,6 @@ const buildPayload = (formData) => {
     "company",
     "jobTitle",
     "website",
-    "photoUrl",
     "notes",
   ];
 
@@ -100,6 +103,17 @@ const CreateContact = () => {
   const [formData, setFormData] = useState(initialFormData);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
+
+  useEffect(
+    () => () => {
+      if (photoPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(photoPreviewUrl);
+      }
+    },
+    [photoPreviewUrl],
+  );
 
   const contactMethodHint = useMemo(() => {
     if (!isBlank(formData.phone) || !isBlank(formData.email)) {
@@ -124,6 +138,49 @@ const CreateContact = () => {
     }));
   };
 
+  const setPreviewFromFile = (file) => {
+    setPhotoPreviewUrl((prev) => {
+      if (prev.startsWith("blob:")) {
+        URL.revokeObjectURL(prev);
+      }
+      return file ? URL.createObjectURL(file) : "";
+    });
+  };
+
+  const handlePhotoChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    const photoError = validateContactPhotoFile(file);
+
+    if (photoError) {
+      setErrors((prev) => ({
+        ...prev,
+        photo: photoError,
+        general: null,
+      }));
+      event.target.value = "";
+      return;
+    }
+
+    setPhotoFile(file);
+    setPreviewFromFile(file);
+    setErrors((prev) => ({
+      ...prev,
+      photo: null,
+      general: null,
+    }));
+    event.target.value = "";
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoFile(null);
+    setPreviewFromFile(null);
+    setErrors((prev) => ({
+      ...prev,
+      photo: null,
+      general: null,
+    }));
+  };
+
   const validate = () => {
     const newErrors = {};
 
@@ -143,11 +200,6 @@ const CreateContact = () => {
     if (!isValidHttpUrl(formData.website)) {
       newErrors.website = "Website must be a valid URL (http or https)";
     }
-
-    if (!isValidHttpUrl(formData.photoUrl)) {
-      newErrors.photoUrl = "Photo URL must be a valid URL (http or https)";
-    }
-
     return newErrors;
   };
 
@@ -164,7 +216,12 @@ const CreateContact = () => {
 
     try {
       const payload = buildPayload(formData);
-      const response = await api.post("/contacts", payload);
+      const requestData = buildContactUploadFormData(payload, photoFile);
+      const response = await api.post("/contacts", requestData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
       const createdContact = response.data?.data || response.data;
       const contactId = createdContact?._id || createdContact?.id;
 
@@ -329,14 +386,16 @@ const CreateContact = () => {
               error={errors.website}
             />
 
-            <Input
-              label="Photo URL"
-              name="photoUrl"
-              value={formData.photoUrl}
-              onChange={handleChange}
-              placeholder="https://example.com/photo.jpg"
-              error={errors.photoUrl}
-            />
+            <div className="mb-4">
+              <ContactPhotoPicker
+                imageUrl={photoPreviewUrl}
+                displayName={formData.displayName}
+                fileName={photoFile?.name || ""}
+                error={errors.photo}
+                onFileChange={handlePhotoChange}
+                onRemove={handleRemovePhoto}
+              />
+            </div>
 
             <div className="mb-4">
               <label

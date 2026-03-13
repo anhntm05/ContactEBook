@@ -1,4 +1,6 @@
 import express from "express";
+import parseContactPayload from "../middleware/parseContactPayload.js";
+import { uploadContactPhoto } from "../middleware/uploadContactPhoto.js";
 import validateCreateContact from "../middleware/validateCreateContact.js";
 import {
   createContact,
@@ -17,7 +19,13 @@ router.use(protect);
 router.get("/", getContacts);
 router.get("/search", searchContacts);
 router.get("/:id", getContactById);
-router.put("/:id", updateContact);
-router.post("/", validateCreateContact, createContact);
+router.put("/:id", uploadContactPhoto, parseContactPayload, updateContact);
+router.post(
+  "/",
+  uploadContactPhoto,
+  parseContactPayload,
+  validateCreateContact,
+  createContact,
+);
 
 export default router;

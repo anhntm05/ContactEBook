@@ -10,7 +10,11 @@ import {
   exportContactsToExcel,
   exportContactsToVCard,
 } from "../utils/contactExport";
-import { loadContactMetaMap, removeContactMeta } from "../utils/contactMeta";
+import {
+  loadContactMetaMap,
+  removeContactMeta,
+  upsertContactMeta,
+} from "../utils/contactMeta";
 
 const getId = (contact) => contact?._id || contact?.id;
 
@@ -69,7 +73,8 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("contacts");
 
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState("name_asc");
+  const [sortBy, setSortBy] = useState("recent");
+  const [favoriteFilter, setFavoriteFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -82,6 +87,14 @@ const Dashboard = () => {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  const resetSearchSortAndFilter = () => {
+    setQuery("");
+    setSortBy("recent");
+    setFavoriteFilter("all");
+    setPage(1);
+  };
 
   const fetchContacts = async () => {
     try {
@@ -109,9 +122,18 @@ const Dashboard = () => {
 
   useEffect(() => {
     const routeMessage = location.state?.successMessage || location.state?.message;
-    if (!routeMessage) return;
+    const shouldRefreshContacts = !!location.state?.refreshContacts;
 
-    setSuccessMessage(routeMessage);
+    if (shouldRefreshContacts) {
+      fetchContacts();
+    }
+
+    if (routeMessage) {
+      setSuccessMessage(routeMessage);
+    }
+
+    if (!routeMessage && !shouldRefreshContacts) return;
+
     navigate(location.pathname, { replace: true, state: null });
   }, [location.pathname, location.state, navigate]);
 
@@ -135,6 +157,14 @@ const Dashboard = () => {
         .includes(lowered);
     });
 
+    if (favoriteFilter === "favorites") {
+      data = data.filter((contact) => !!contact.favorite);
+    }
+
+    if (favoriteFilter === "non_favorites") {
+      data = data.filter((contact) => !contact.favorite);
+    }
+
     data = [...data].sort((a, b) => {
       if (sortBy === "recent") {
         return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
@@ -149,7 +179,7 @@ const Dashboard = () => {
     });
 
     return data;
-  }, [contacts, query, sortBy]);
+  }, [contacts, favoriteFilter, query, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredContacts.length / perPage));
   const currentPage = Math.min(page, totalPages);
@@ -262,6 +292,35 @@ const Dashboard = () => {
   const getSelectedContacts = () =>
     contacts.filter((item) => selectedIds.has(item.id || getId(item)));
 
+  const markSelectedAsFavorite = async () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+
+    setFavoriteLoading(true);
+    setError("");
+
+    try {
+      await Promise.all(ids.map((id) => api.put(`/contacts/${id}`, { favorite: true })));
+      ids.forEach((id) => upsertContactMeta(id, { favorite: true }));
+
+      setSelectedIds(new Set());
+      setSuccessMessage(
+        ids.length > 1
+          ? "Selected contacts marked as favorite."
+          : "Contact marked as favorite.",
+      );
+
+      await fetchContacts();
+    } catch (favoriteRequestError) {
+      setError(
+        favoriteRequestError?.response?.data?.message ||
+          "Failed to mark selected contacts as favorite.",
+      );
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
   const mapContactForExport = (contact) => {
     const phones = (contact.phoneNumbers || contact.phones || [])
       .map((item) => ({
@@ -365,7 +424,7 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="container mx-auto max-w-7xl px-4 py-8 space-y-6">
-        <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-6 md:p-8 text-white shadow-lg">
+        <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 p-6 md:p-8 text-white shadow-lg">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm font-medium text-blue-100">Dashboard Overview</p>
@@ -455,7 +514,7 @@ const Dashboard = () => {
           </section>
         ) : (
           <section className="rounded-2xl bg-white shadow-md border border-slate-200 p-4 md:p-5 space-y-4">
-            <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto_auto] lg:items-end">
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-600">
                   Search Contacts
@@ -476,7 +535,10 @@ const Dashboard = () => {
                 <span className="mb-1 block text-sm font-medium text-slate-600">Sort by</span>
                 <select
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
+                  onChange={(e) => {
+                    setSortBy(e.target.value);
+                    setPage(1);
+                  }}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="name_asc">Name (A-Z)</option>
@@ -485,6 +547,30 @@ const Dashboard = () => {
                   <option value="company">Company</option>
                 </select>
               </label>
+
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-600">Filter</span>
+                <select
+                  value={favoriteFilter}
+                  onChange={(e) => {
+                    setFavoriteFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Contacts</option>
+                  <option value="favorites">Favorites Only</option>
+                  <option value="non_favorites">Non-favorites</option>
+                </select>
+              </label>
+
+              <Button
+                variant="outline"
+                onClick={resetSearchSortAndFilter}
+                className="h-[42px] border-slate-300 text-slate-700 hover:!border-slate-400 hover:!bg-slate-100"
+              >
+                Reset
+              </Button>
 
               <div className="text-sm text-slate-600 rounded-lg bg-slate-100 px-3 py-2.5">
                 Showing <span className="font-semibold text-slate-800">{filteredContacts.length}</span>{" "}
@@ -505,6 +591,16 @@ const Dashboard = () => {
               </div>
 
               <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  className="border-purple-600 text-purple-600 hover:!bg-purple-600 hover:!text-white hover:!border-purple-600"
+                  disabled={selectedIds.size === 0 || favoriteLoading}
+                  loading={favoriteLoading}
+                  onClick={markSelectedAsFavorite}
+                >
+                  Favorite Selected
+                </Button>
+
                 <Button
                   variant="outline"
                   className="border-red-600 text-red-600 hover:!bg-red-600 hover:!text-white hover:!border-red-600"

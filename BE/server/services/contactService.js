@@ -1,5 +1,10 @@
 import mongoose from "mongoose";
 import Contact from "../models/Contact.js";
+import {
+  deleteStoredContactPhoto,
+  resolveContactPhotoUrl,
+} from "../utils/contactPhotoStorage.js";
+import { getUploadedPhotoUrl } from "../middleware/uploadContactPhoto.js";
 
 // Projection fields for contact list and search endpoints to optimize query performance.
 const CONTACT_LIST_PROJECTION = [
@@ -61,7 +66,7 @@ const normalizeEmails = (emails = []) =>
     .filter((email) => email.value);
 
 // Maps a contact document to a response shape used by dashboard/contact list UIs.
-const toListItem = (contact) => {
+const toListItem = (req, contact) => {
   const phones = normalizePhones(contact?.phones);
   const emails = normalizeEmails(contact?.emails);
 
@@ -99,7 +104,7 @@ const toListItem = (contact) => {
     emails,
     tags: Array.isArray(contact?.tags) ? contact.tags : [],
     favorite: !!contact?.favorite,
-    photoUrl: contact?.photoUrl || "",
+    photoUrl: resolveContactPhotoUrl(req, contact?.photoUrl || ""),
     addresses: Array.isArray(contact?.addresses) ? contact.addresses : [],
     website: contact?.website || "",
     socialLinks: Array.isArray(contact?.socialLinks) ? contact.socialLinks : [],
@@ -111,7 +116,7 @@ const toListItem = (contact) => {
 };
 
 // Maps a single contact to a full-detail response while preserving model fields.
-const toDetailItem = (contact) => {
+const toDetailItem = (req, contact) => {
   const phones = normalizePhones(contact?.phones);
   const emails = normalizeEmails(contact?.emails);
 
@@ -145,6 +150,7 @@ const toDetailItem = (contact) => {
     tags: Array.isArray(contact?.tags) ? contact.tags : [],
     groupIds: Array.isArray(contact?.groupIds) ? contact.groupIds : [],
     favorite: !!contact?.favorite,
+    photoUrl: resolveContactPhotoUrl(req, contact?.photoUrl || ""),
     deletedAt: contact?.deletedAt || null,
   };
 };
@@ -240,7 +246,7 @@ export const getContactsService = async (req) => {
     .sort({ createdAt: -1, _id: -1 })
     .lean();
 
-  return contacts.map(toListItem);
+  return contacts.map((contact) => toListItem(req, contact));
 };
 
 export const searchContactsService = async (req) => {
@@ -272,7 +278,7 @@ export const searchContactsService = async (req) => {
     .collation({ locale: "en", strength: 2 })
     .lean();
 
-  return contacts.map(toListItem);
+  return contacts.map((contact) => toListItem(req, contact));
 };
 
 export const getContactByIdService = async (req) => {
@@ -293,85 +299,142 @@ export const getContactByIdService = async (req) => {
     throw new ContactServiceError(404, "Contact not found");
   }
 
-  return toDetailItem(contact);
+  return toDetailItem(req, contact);
 };
 
 export const createContactService = async (req) => {
   const createdBy = requireAuthUserId(req);
+  const uploadedPhotoUrl = getUploadedPhotoUrl(req.file);
+  let createdContact = null;
 
-  const contactData = {
-    ...req.validatedContactData,
-    createdBy,
-  };
+  try {
+    const contactData = {
+      ...req.validatedContactData,
+      createdBy,
+    };
 
-  return Contact.create(contactData);
+    if (uploadedPhotoUrl) {
+      contactData.photoUrl = uploadedPhotoUrl;
+    }
+
+    createdContact = await Contact.create(contactData);
+    return toDetailItem(req, createdContact.toObject());
+  } catch (error) {
+    if (uploadedPhotoUrl && !createdContact) {
+      await deleteStoredContactPhoto(uploadedPhotoUrl);
+    }
+    throw error;
+  }
 };
 
 export const updateContactService = async (req) => {
   const createdBy = requireAuthUserId(req);
   const contactId = `${req.params?.id || ""}`.trim();
+  const uploadedPhotoUrl = getUploadedPhotoUrl(req.file);
+  let updateSucceeded = false;
 
   if (!mongoose.Types.ObjectId.isValid(contactId)) {
+    if (uploadedPhotoUrl) {
+      await deleteStoredContactPhoto(uploadedPhotoUrl);
+    }
     throw new ContactServiceError(400, "Invalid contact id");
   }
 
-  const body = req.body || {};
-  const updateData = {};
+  try {
+    const existingContact = await Contact.findOne({
+      _id: contactId,
+      createdBy,
+      deletedAt: null,
+    }).lean();
 
-  if ("displayName" in body || "name" in body) {
-    updateData.displayName = normalizeString(body.displayName || body.name, "");
-  }
-  if ("firstName" in body) updateData.firstName = normalizeString(body.firstName, "");
-  if ("middleName" in body) updateData.middleName = normalizeString(body.middleName, "");
-  if ("lastName" in body) updateData.lastName = normalizeString(body.lastName, "");
-  if ("nickname" in body) updateData.nickname = normalizeString(body.nickname, "");
-  if ("photoUrl" in body) updateData.photoUrl = normalizeString(body.photoUrl, "");
-  if ("company" in body) updateData.company = normalizeString(body.company, "");
-  if ("jobTitle" in body) updateData.jobTitle = normalizeString(body.jobTitle, "");
-  if ("department" in body) updateData.department = normalizeString(body.department, "");
-  if ("website" in body) updateData.website = normalizeString(body.website, "");
-  if ("notes" in body) updateData.notes = normalizeString(body.notes, "");
-  if ("source" in body) updateData.source = normalizeString(body.source, "manual") || "manual";
-  if ("favorite" in body) updateData.favorite = !!body.favorite;
-  if ("tags" in body) updateData.tags = normalizeTagsPayload(body.tags);
-  if ("phones" in body || "phoneNumbers" in body) {
-    updateData.phones = normalizePhonePayload(body.phones ?? body.phoneNumbers);
-  }
-  if ("emails" in body) {
-    updateData.emails = normalizeEmailPayload(body.emails);
-  }
-  if ("addresses" in body) {
-    updateData.addresses = normalizeAddressPayload(body.addresses);
-  }
-  if ("socialLinks" in body) {
-    updateData.socialLinks = normalizeSocialPayload(body.socialLinks);
-  }
-
-  if ("birthday" in body) {
-    if (!body.birthday) {
-      updateData.birthday = null;
-    } else {
-      const parsedBirthday = new Date(body.birthday);
-      if (Number.isNaN(parsedBirthday.getTime())) {
-        throw new ContactServiceError(400, "Invalid birthday value");
-      }
-      updateData.birthday = parsedBirthday;
+    if (!existingContact) {
+      throw new ContactServiceError(404, "Contact not found");
     }
+
+    const body = req.body || {};
+    const updateData = {};
+
+    if ("displayName" in body || "name" in body) {
+      updateData.displayName = normalizeString(body.displayName || body.name, "");
+    }
+    if ("firstName" in body) updateData.firstName = normalizeString(body.firstName, "");
+    if ("middleName" in body) updateData.middleName = normalizeString(body.middleName, "");
+    if ("lastName" in body) updateData.lastName = normalizeString(body.lastName, "");
+    if ("nickname" in body) updateData.nickname = normalizeString(body.nickname, "");
+    if ("photoUrl" in body) updateData.photoUrl = normalizeString(body.photoUrl, "");
+    if ("company" in body) updateData.company = normalizeString(body.company, "");
+    if ("jobTitle" in body) updateData.jobTitle = normalizeString(body.jobTitle, "");
+    if ("department" in body) updateData.department = normalizeString(body.department, "");
+    if ("website" in body) updateData.website = normalizeString(body.website, "");
+    if ("notes" in body) updateData.notes = normalizeString(body.notes, "");
+    if ("source" in body) updateData.source = normalizeString(body.source, "manual") || "manual";
+    if ("favorite" in body) updateData.favorite = !!body.favorite;
+    if ("tags" in body) updateData.tags = normalizeTagsPayload(body.tags);
+    if ("phones" in body || "phoneNumbers" in body) {
+      updateData.phones = normalizePhonePayload(body.phones ?? body.phoneNumbers);
+    }
+    if ("emails" in body) {
+      updateData.emails = normalizeEmailPayload(body.emails);
+    }
+    if ("addresses" in body) {
+      updateData.addresses = normalizeAddressPayload(body.addresses);
+    }
+    if ("socialLinks" in body) {
+      updateData.socialLinks = normalizeSocialPayload(body.socialLinks);
+    }
+
+    if ("birthday" in body) {
+      if (!body.birthday) {
+        updateData.birthday = null;
+      } else {
+        const parsedBirthday = new Date(body.birthday);
+        if (Number.isNaN(parsedBirthday.getTime())) {
+          throw new ContactServiceError(400, "Invalid birthday value");
+        }
+        updateData.birthday = parsedBirthday;
+      }
+    }
+
+    if (body.removePhoto) {
+      updateData.photoUrl = "";
+    }
+
+    if (uploadedPhotoUrl) {
+      updateData.photoUrl = uploadedPhotoUrl;
+    }
+
+    if (!Object.keys(updateData).length) {
+      throw new ContactServiceError(400, "No valid fields provided for update");
+    }
+
+    const updatedContact = await Contact.findOneAndUpdate(
+      { _id: contactId, createdBy, deletedAt: null },
+      { $set: updateData },
+      { new: true, runValidators: true },
+    ).lean();
+
+    if (!updatedContact) {
+      throw new ContactServiceError(404, "Contact not found");
+    }
+    updateSucceeded = true;
+
+    if (
+      updateData.photoUrl !== undefined &&
+      existingContact.photoUrl &&
+      existingContact.photoUrl !== updateData.photoUrl
+    ) {
+      try {
+        await deleteStoredContactPhoto(existingContact.photoUrl);
+      } catch {
+        // Keep the successful update even if cleanup of the old file fails.
+      }
+    }
+
+    return toDetailItem(req, updatedContact);
+  } catch (error) {
+    if (uploadedPhotoUrl && !updateSucceeded) {
+      await deleteStoredContactPhoto(uploadedPhotoUrl);
+    }
+    throw error;
   }
-
-  if (!Object.keys(updateData).length) {
-    throw new ContactServiceError(400, "No valid fields provided for update");
-  }
-
-  const updatedContact = await Contact.findOneAndUpdate(
-    { _id: contactId, createdBy, deletedAt: null },
-    { $set: updateData },
-    { new: true, runValidators: true }
-  ).lean();
-
-  if (!updatedContact) {
-    throw new ContactServiceError(404, "Contact not found");
-  }
-
-  return toDetailItem(updatedContact);
 };

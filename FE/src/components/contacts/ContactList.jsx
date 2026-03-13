@@ -1,6 +1,6 @@
 import { getInitials } from "../../utils/helpers";
 
-const pageOptions = [10, 25, 50];
+const pageOptions = [5, 10, 25, 50];
 
 const getId = (contact) => contact?._id || contact?.id;
 
@@ -30,8 +30,7 @@ const getEmails = (contact) => {
 };
 
 const getTags = (contact) => {
-  const tags = Array.isArray(contact.tags) ? contact.tags : [];
-  return contact.favorite && !tags.includes("Favorite") ? ["Favorite", ...tags] : tags;
+  return Array.isArray(contact.tags) ? contact.tags : [];
 };
 
 const buildPageNumbers = (page, pageCount) => {
@@ -113,25 +112,46 @@ const ContactList = ({
                   </td>
                   <td className="px-4 py-4 align-top">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold">
-                        {getInitials(contact.name || `${contact.firstName || ""} ${contact.lastName || ""}`)}
-                      </div>
+                      {contact.photoUrl ? (
+                        <img
+                          src={contact.photoUrl}
+                          alt={contact.name || contact.displayName || "Contact"}
+                          className="h-10 w-10 rounded-full border border-slate-200 object-cover"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold">
+                          {getInitials(contact.name || `${contact.firstName || ""} ${contact.lastName || ""}`)}
+                        </div>
+                      )}
                       <div>
-                        <p className="font-semibold text-gray-800">{contact.name || `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Unnamed"}</p>
+                        <p
+                          className={`inline-flex rounded-full px-3 py-1 font-semibold ${
+                            contact.favorite
+                              ? "bg-purple-100 text-purple-700"
+                              : "text-gray-800"
+                          }`}
+                        >
+                          {contact.name || `${contact.firstName || ""} ${contact.lastName || ""}`.trim() || "Unnamed"}
+                        </p>
                         <p className="text-sm text-gray-500">{contact.jobTitle || "No title"}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-4 py-4 align-top text-sm text-gray-700">{contact.company || "-"}</td>
                   <td className="px-4 py-4 align-top">
-                    <p className="text-sm text-gray-700">Primary: {primaryPhone}</p>
+                    <p className="text-sm text-gray-700">{primaryPhone}</p>
                     {morePhoneCount > 0 && <span className="inline-block mt-1 text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">+{morePhoneCount} more</span>}
                   </td>
                   <td className="px-4 py-4 align-top text-sm text-gray-700">{emails[0]?.email || "-"}</td>
                   <td className="px-4 py-4 align-top">
                     <div className="flex flex-wrap gap-1">
                       {tags.length ? tags.slice(0, 3).map((tag) => (
-                        <span key={`${id}-${tag}`} className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700">{tag}</span>
+                        <span
+                          key={`${id}-${tag}`}
+                          className="text-xs px-2 py-1 rounded-full bg-blue-100 text-blue-700"
+                        >
+                          {tag}
+                        </span>
                       )) : <span className="text-sm text-gray-400">-</span>}
                     </div>
                   </td>
@@ -156,19 +176,19 @@ const ContactList = ({
             {pageOptions.map((option) => <option key={option} value={option}>{option} / page</option>)}
           </select>
           <div className="flex items-center gap-1">
-            <button type="button" disabled={page === 1} onClick={() => onPageChange(page - 1)} className="px-3 py-2 rounded-lg border border-gray-300 text-sm disabled:opacity-50">Previous</button>
+            <button type="button" disabled={page === 1} onClick={() => onPageChange(page - 1)} className="px-3 py-2 rounded-lg border border-gray-300 text-sm disabled:opacity-50 disabled:hover:cursor-not-allowed">Previous</button>
             {pageNumbers.map((item, idx) => (
               <button
                 key={`${item}-${idx}`}
                 type="button"
                 disabled={item === "..."}
                 onClick={() => item !== "..." && onPageChange(item)}
-                className={`px-3 py-2 rounded-lg text-sm border ${item === page ? "bg-blue-600 text-white border-blue-600" : "border-gray-300 text-gray-700"} ${item === "..." ? "cursor-default" : "hover:bg-gray-100"}`}
+                className={`px-3 py-2 rounded-lg text-sm border ${item === page ? "bg-blue-600 text-white border-blue-600" : "border-gray-300 text-gray-700"} ${item === "..." ? "cursor-default" : "hover:bg-blue-800"}`}
               >
                 {item}
               </button>
             ))}
-            <button type="button" disabled={page === pageCount} onClick={() => onPageChange(page + 1)} className="px-3 py-2 rounded-lg border border-gray-300 text-sm disabled:opacity-50">Next</button>
+            <button type="button" disabled={page === pageCount} onClick={() => onPageChange(page + 1)} className="px-3 py-2 rounded-lg border border-gray-300 text-sm disabled:opacity-50 disabled:hover:cursor-not-allowed">Next</button>
           </div>
         </div>
       </div>

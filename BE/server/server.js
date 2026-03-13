@@ -7,6 +7,7 @@ import connectDB from "./config/db.js";
 import authRoutes from "./routes/auth.js";
 import contactRoutes from "./routes/contactRoutes.js";
 import errorHandler from "./middleware/errorHandler.js";
+import { uploadsRootDir } from "./utils/contactPhotoStorage.js";
 
 const app = express();
 
@@ -18,6 +19,7 @@ app.use(
     credentials: true,
   })
 );
+app.use("/uploads", express.static(uploadsRootDir));
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({ status: "ok" });
