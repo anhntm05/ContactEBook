@@ -22,9 +22,15 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    if (error.response?.status === 401) {
-      console.log("Unauthorized access");
+    const status = error.response?.status;
+    const errorCode = error.response?.data?.errorCode;
+
+    if (status === 401 && errorCode === "TOKEN_EXPIRED") {
+      if (window.location.pathname !== "/auth-failed") {
+        window.location.replace("/auth-failed");
+      }
     }
+
     return Promise.reject(error);
   }
 );
