@@ -44,7 +44,7 @@ const normalizePhones = (phones = []) =>
     .map((phone) => ({
       label: phone?.label || "mobile",
       value: phone?.value || "",
-      // number: phone?.value || "",
+      number: phone?.value || "",
       isPrimary: !!phone?.isPrimary,
     }))
     .filter((phone) => phone.value);
@@ -55,7 +55,7 @@ const normalizeEmails = (emails = []) =>
     .map((email) => ({
       label: email?.label || "personal",
       value: email?.value || "",
-      // email: email?.value || "",
+      email: email?.value || "",
       isPrimary: !!email?.isPrimary,
     }))
     .filter((email) => email.value);
@@ -178,6 +178,57 @@ const requireAuthUserId = (req) => {
   return userId;
 };
 
+const normalizeString = (value, fallback = "") =>
+  `${value ?? fallback}`.trim();
+
+const normalizePhonePayload = (phones = []) =>
+  (Array.isArray(phones) ? phones : [])
+    .map((phone) => ({
+      label: normalizeString(phone?.label, "mobile") || "mobile",
+      value: normalizeString(phone?.value || phone?.number, ""),
+      isPrimary: !!phone?.isPrimary,
+    }))
+    .filter((phone) => phone.value);
+
+const normalizeEmailPayload = (emails = []) =>
+  (Array.isArray(emails) ? emails : [])
+    .map((email) => ({
+      label: normalizeString(email?.label, "personal") || "personal",
+      value: normalizeString(email?.value || email?.email, ""),
+      isPrimary: !!email?.isPrimary,
+    }))
+    .filter((email) => email.value);
+
+const normalizeAddressPayload = (addresses = []) =>
+  (Array.isArray(addresses) ? addresses : [])
+    .map((address) => ({
+      label: normalizeString(address?.label, "home") || "home",
+      street: normalizeString(address?.street, ""),
+      city: normalizeString(address?.city, ""),
+      state: normalizeString(address?.state, ""),
+      postalCode: normalizeString(
+        address?.postalCode || address?.zip || address?.zipcode,
+        ""
+      ),
+      country: normalizeString(address?.country, ""),
+    }))
+    .filter((address) =>
+      [address.street, address.city, address.state, address.postalCode, address.country].some(Boolean)
+    );
+
+const normalizeSocialPayload = (socialLinks = []) =>
+  (Array.isArray(socialLinks) ? socialLinks : [])
+    .map((social) => ({
+      platform: normalizeString(social?.platform, ""),
+      url: normalizeString(social?.url, ""),
+    }))
+    .filter((social) => social.platform && social.url);
+
+const normalizeTagsPayload = (tags = []) =>
+  (Array.isArray(tags) ? tags : [])
+    .map((tag) => normalizeString(tag, ""))
+    .filter(Boolean);
+
 export const getContactsService = async (req) => {
   const createdBy = requireAuthUserId(req);
 
@@ -254,4 +305,73 @@ export const createContactService = async (req) => {
   };
 
   return Contact.create(contactData);
+};
+
+export const updateContactService = async (req) => {
+  const createdBy = requireAuthUserId(req);
+  const contactId = `${req.params?.id || ""}`.trim();
+
+  if (!mongoose.Types.ObjectId.isValid(contactId)) {
+    throw new ContactServiceError(400, "Invalid contact id");
+  }
+
+  const body = req.body || {};
+  const updateData = {};
+
+  if ("displayName" in body || "name" in body) {
+    updateData.displayName = normalizeString(body.displayName || body.name, "");
+  }
+  if ("firstName" in body) updateData.firstName = normalizeString(body.firstName, "");
+  if ("middleName" in body) updateData.middleName = normalizeString(body.middleName, "");
+  if ("lastName" in body) updateData.lastName = normalizeString(body.lastName, "");
+  if ("nickname" in body) updateData.nickname = normalizeString(body.nickname, "");
+  if ("photoUrl" in body) updateData.photoUrl = normalizeString(body.photoUrl, "");
+  if ("company" in body) updateData.company = normalizeString(body.company, "");
+  if ("jobTitle" in body) updateData.jobTitle = normalizeString(body.jobTitle, "");
+  if ("department" in body) updateData.department = normalizeString(body.department, "");
+  if ("website" in body) updateData.website = normalizeString(body.website, "");
+  if ("notes" in body) updateData.notes = normalizeString(body.notes, "");
+  if ("source" in body) updateData.source = normalizeString(body.source, "manual") || "manual";
+  if ("favorite" in body) updateData.favorite = !!body.favorite;
+  if ("tags" in body) updateData.tags = normalizeTagsPayload(body.tags);
+  if ("phones" in body || "phoneNumbers" in body) {
+    updateData.phones = normalizePhonePayload(body.phones ?? body.phoneNumbers);
+  }
+  if ("emails" in body) {
+    updateData.emails = normalizeEmailPayload(body.emails);
+  }
+  if ("addresses" in body) {
+    updateData.addresses = normalizeAddressPayload(body.addresses);
+  }
+  if ("socialLinks" in body) {
+    updateData.socialLinks = normalizeSocialPayload(body.socialLinks);
+  }
+
+  if ("birthday" in body) {
+    if (!body.birthday) {
+      updateData.birthday = null;
+    } else {
+      const parsedBirthday = new Date(body.birthday);
+      if (Number.isNaN(parsedBirthday.getTime())) {
+        throw new ContactServiceError(400, "Invalid birthday value");
+      }
+      updateData.birthday = parsedBirthday;
+    }
+  }
+
+  if (!Object.keys(updateData).length) {
+    throw new ContactServiceError(400, "No valid fields provided for update");
+  }
+
+  const updatedContact = await Contact.findOneAndUpdate(
+    { _id: contactId, createdBy, deletedAt: null },
+    { $set: updateData },
+    { new: true, runValidators: true }
+  ).lean();
+
+  if (!updatedContact) {
+    throw new ContactServiceError(404, "Contact not found");
+  }
+
+  return toDetailItem(updatedContact);
 };

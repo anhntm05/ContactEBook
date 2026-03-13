@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Input from "../components/common/Input";
 import Button from "../components/common/Button";
@@ -11,8 +11,18 @@ const Login = () => {
   });
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState("");
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    const expiredMessage = location.state?.expiredMessage;
+    if (!expiredMessage) return;
+
+    setNotice(expiredMessage);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
 
   const handleChange = (e) => {
     setFormData({
@@ -58,6 +68,12 @@ const Login = () => {
         <h2 className="text-3xl font-bold text-center text-gray-800 mb-6">
           Login to ContactHub
         </h2>
+
+        {notice && (
+          <div className="bg-amber-100 border border-amber-400 text-amber-800 px-4 py-3 rounded mb-4">
+            {notice}
+          </div>
+        )}
 
         {errors.general && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">

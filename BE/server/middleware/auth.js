@@ -1,6 +1,14 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
+const getCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict",
+  expires: new Date(0),
+  maxAge: 0,
+});
+
 const protect = async (req, res, next) => {
   // Read JWT from signed-in user's cookie.
   const token = req.cookies && req.cookies.token;
@@ -30,7 +38,17 @@ const protect = async (req, res, next) => {
     req.userId = user._id;
     return next();
   } catch (err) {
-    // Any token validation or parsing error is treated as unauthorized.
+    // If token is expired, remove stale cookie and send a specific error code.
+    if (err?.name === "TokenExpiredError") {
+      res.cookie("token", "none", getCookieOptions());
+      return res.status(401).json({
+        success: false,
+        message: "Token expired",
+        errorCode: "TOKEN_EXPIRED",
+      });
+    }
+
+    // Any other token validation or parsing error is unauthorized.
     return res.status(401).json({ success: false, message: "Not authorized" });
   }
 };

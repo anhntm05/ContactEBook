@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import CreateContact from "./pages/CreateContact";
 import ContactDetail from "./pages/ContactDetail";
 import ContactListPage from "./pages/ContactListPage";
+import AuthFailed from "./pages/AuthFailed";
 import NotFound from "./pages/NotFound";
 
 function App() {
@@ -38,6 +39,7 @@ function App() {
                   </PublicRoute>
                 }
               />
+              <Route path="/auth-failed" element={<AuthFailed />} />
               <Route
                 path="/contacts"
                 element={
@@ -51,6 +53,14 @@ function App() {
                 element={
                   <PrivateRoute>
                     <CreateContact />
+                  </PrivateRoute>
+                }
+              />
+              <Route
+                path="/contacts/:id"
+                element={
+                  <PrivateRoute>
+                    <ContactDetail />
                   </PrivateRoute>
                 }
               />

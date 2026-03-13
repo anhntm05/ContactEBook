@@ -5,6 +5,7 @@ import {
   getContactById,
   getContacts,
   searchContacts,
+  updateContact,
 } from "../controllers/contactController.js";
 import { protect } from "../middleware/auth.js";
 
@@ -16,6 +17,7 @@ router.use(protect);
 router.get("/", getContacts);
 router.get("/search", searchContacts);
 router.get("/:id", getContactById);
+router.put("/:id", updateContact);
 router.post("/", validateCreateContact, createContact);
 
 export default router;

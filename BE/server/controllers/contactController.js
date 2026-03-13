@@ -4,6 +4,7 @@ import {
   getContactByIdService,
   getContactsService,
   searchContactsService,
+  updateContactService,
 } from "../services/contactService.js";
 
 const getContacts = async (req, res) => {
@@ -99,4 +100,28 @@ const createContact = async (req, res) => {
   }
 };
 
-export { createContact, getContactById, getContacts, searchContacts };
+const updateContact = async (req, res) => {
+  try {
+    const contact = await updateContactService(req);
+    return res.status(200).json({
+      success: true,
+      message: "Contact updated successfully",
+      data: contact,
+    });
+  } catch (error) {
+    if (error instanceof ContactServiceError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update contact",
+      error: error.message,
+    });
+  }
+};
+
+export { createContact, getContactById, getContacts, searchContacts, updateContact };
