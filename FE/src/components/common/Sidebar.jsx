@@ -1,3 +1,7 @@
+import { useEffect, useState } from "react";
+
+const TRANSITION_MS = 500;
+
 const Sidebar = ({
   open,
   title,
@@ -6,18 +10,49 @@ const Sidebar = ({
   onSelect,
   onClose,
 }) => {
-  if (!open) return null;
+  const [rendered, setRendered] = useState(open);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    let frameId;
+    let timeoutId;
+
+    if (open) {
+      setRendered(true);
+      frameId = window.requestAnimationFrame(() => {
+        setVisible(true);
+      });
+    } else {
+      setVisible(false);
+      timeoutId = window.setTimeout(() => {
+        setRendered(false);
+      }, TRANSITION_MS);
+    }
+
+    return () => {
+      if (frameId) window.cancelAnimationFrame(frameId);
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
+  }, [open]);
+
+  if (!rendered) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex">
+    <div className="fixed inset-0 z-50">
       <button
         type="button"
         aria-label="Close sidebar overlay"
-        className="flex-1 bg-slate-950/40 backdrop-blur-[1px]"
+        className={`absolute inset-0 bg-slate-950/40 backdrop-blur-[1px] transition-opacity duration-500 ${
+          visible ? "opacity-100" : "opacity-0"
+        }`}
         onClick={onClose}
       />
 
-      <aside className="flex h-full w-full max-w-xs flex-col border-l border-slate-200 bg-white shadow-2xl">
+      <aside
+        className={`absolute left-0 top-0 flex h-full w-full max-w-xs flex-col border-r border-slate-200 bg-white shadow-2xl transition-transform duration-500 ${
+          visible ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
@@ -47,7 +82,7 @@ const Sidebar = ({
                 onClick={() => onSelect(item.key)}
                 className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition ${
                   active
-                    ? "border-blue-200 bg-blue-600 text-white shadow-sm"
+                    ? "border-blue-200 bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-sm"
                     : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
                 }`}
               >

@@ -448,3 +448,90 @@ export const updateContactService = async (req) => {
     throw error;
   }
 };
+
+export const deleteContactService = async (req) => {
+  const createdBy = requireAuthUserId(req);
+  const contactId = `${req.params?.id || ""}`.trim();
+
+  if (!mongoose.Types.ObjectId.isValid(contactId)) {
+    throw new ContactServiceError(400, "Invalid contact id");
+  }
+
+  const deletedAt = new Date();
+
+  const deletedContact = await Contact.findOneAndUpdate(
+    { _id: contactId, createdBy, deletedAt: null },
+    { $set: { deletedAt } },
+    { new: true },
+  ).lean();
+
+  if (!deletedContact) {
+    throw new ContactServiceError(404, "Contact not found");
+  }
+
+  if (deletedContact.photoUrl) {
+    try {
+      await deleteStoredContactPhoto(deletedContact.photoUrl);
+    } catch {
+      // Keep the delete successful even if photo cleanup fails.
+    }
+  }
+
+  return {
+    deletedCount: 1,
+    ids: [contactId],
+  };
+};
+
+export const deleteManyContactsService = async (req) => {
+  const createdBy = requireAuthUserId(req);
+  const rawIds = Array.isArray(req.body?.ids) ? req.body.ids : [];
+  const ids = [...new Set(rawIds.map((id) => `${id || ""}`.trim()).filter(Boolean))];
+
+  if (!ids.length) {
+    throw new ContactServiceError(400, "At least one contact id is required");
+  }
+
+  const invalidIds = ids.filter((id) => !mongoose.Types.ObjectId.isValid(id));
+  if (invalidIds.length) {
+    throw new ContactServiceError(400, "One or more contact ids are invalid");
+  }
+
+  const contactsToDelete = await Contact.find({
+    _id: { $in: ids },
+    createdBy,
+    deletedAt: null,
+  })
+    .select("_id photoUrl")
+    .lean();
+
+  if (!contactsToDelete.length) {
+    throw new ContactServiceError(404, "No matching contacts found");
+  }
+
+  const matchedIds = contactsToDelete.map((contact) => `${contact._id}`);
+  const deletedAt = new Date();
+
+  await Contact.updateMany(
+    { _id: { $in: matchedIds }, createdBy, deletedAt: null },
+    { $set: { deletedAt } },
+  );
+
+  await Promise.all(
+    contactsToDelete
+      .map((contact) => contact.photoUrl)
+      .filter(Boolean)
+      .map(async (photoUrl) => {
+        try {
+          await deleteStoredContactPhoto(photoUrl);
+        } catch {
+          // Keep bulk delete successful even if some photo files fail to clean up.
+        }
+      }),
+  );
+
+  return {
+    deletedCount: matchedIds.length,
+    ids: matchedIds,
+  };
+};

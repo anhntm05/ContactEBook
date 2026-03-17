@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ContactPhotoPicker from "../components/contacts/ContactPhotoPicker";
+import FavoriteToggle from "../components/contacts/FavoriteToggle";
 import Button from "../components/common/Button";
+import ToastMessage from "../components/common/ToastMessage";
 import api from "../utils/api";
 import { upsertContactMeta } from "../utils/contactMeta";
 import {
@@ -20,24 +22,12 @@ const initialFormData = {
   email: "",
   emailLabel: "personal",
   website: "",
+  tagsText: "",
   notes: "",
   favorite: false,
 };
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 const isBlank = (value) => !value || !value.trim();
-
-const isValidHttpUrl = (value) => {
-  if (isBlank(value)) return true;
-
-  try {
-    const parsed = new URL(value.trim());
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-};
 
 const normalizeServerErrors = (error) => {
   const responseData = error?.response?.data;
@@ -74,6 +64,15 @@ const buildPayload = (formData) => {
     }
   });
 
+  const tags = formData.tagsText
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+  if (tags.length > 0) {
+    payload.tags = tags;
+  }
+
   if (!isBlank(formData.phone)) {
     payload.phones = [
       {
@@ -101,63 +100,6 @@ const inputClassName = (error) =>
   `w-full rounded-lg border px-3 py-2 text-slate-800 outline-none transition focus:ring-2 focus:ring-blue-200 ${
     error ? "border-red-400" : "border-slate-300"
   }`;
-
-const FavoriteToggle = ({ checked, onChange }) => (
-  <label
-    className={`group flex cursor-pointer items-center justify-between gap-4 rounded-xl border px-4 py-3 transition ${
-      checked
-        ? "border-purple-500 bg-purple-500 shadow-sm"
-        : "border-slate-300 bg-white hover:border-purple-300 hover:bg-purple-50"
-    }`}
-  >
-    <div className="space-y-1">
-      <div
-        className={`text-sm font-semibold ${
-          checked ? "text-white" : "text-slate-800 group-hover:text-purple-700"
-        }`}
-      >
-        Favorite
-      </div>
-      <div
-        className={`text-xs ${
-          checked
-            ? "text-purple-100"
-            : "text-slate-500 group-hover:text-purple-600"
-        }`}
-      >
-        Highlight this contact for faster access.
-      </div>
-    </div>
-    <div className="relative shrink-0">
-      <input
-        type="checkbox"
-        className="peer sr-only"
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      <div
-        className={`flex h-12 w-12 items-center justify-center rounded-2xl border-2 transition ${
-          checked
-            ? "border-purple-200 bg-purple-200 text-purple-600"
-            : "border-slate-300 bg-slate-100 text-transparent group-hover:border-purple-300 group-hover:bg-purple-50 group-hover:text-purple-600"
-        } peer-focus-visible:ring-2 peer-focus-visible:ring-purple-300 peer-focus-visible:ring-offset-2`}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-6 w-6"
-          aria-hidden="true"
-        >
-          <path d="M5 13l4 4L19 7" />
-        </svg>
-      </div>
-    </div>
-  </label>
-);
 
 const CreateContact = () => {
   const navigate = useNavigate();
@@ -261,13 +203,6 @@ const CreateContact = () => {
       newErrors.email = "Provide at least one phone number or one email";
     }
 
-    if (!isBlank(formData.email) && !EMAIL_REGEX.test(formData.email.trim())) {
-      newErrors.email = "Please enter a valid email address";
-    }
-
-    if (!isValidHttpUrl(formData.website)) {
-      newErrors.website = "Website must be a valid URL (http or https)";
-    }
     return newErrors;
   };
 
@@ -299,6 +234,10 @@ const CreateContact = () => {
           lastName: formData.lastName.trim(),
           company: formData.company.trim(),
           jobTitle: formData.jobTitle.trim(),
+          tags: formData.tagsText
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
           phoneNumbers: isBlank(formData.phone)
             ? []
             : [
@@ -320,7 +259,7 @@ const CreateContact = () => {
         });
       }
 
-      navigate("/dashboard", {
+      navigate("/contacts", {
         state: { successMessage: "Contact created successfully." },
       });
     } catch (error) {
@@ -332,32 +271,44 @@ const CreateContact = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <ToastMessage
+        message={errors.general}
+        type="error"
+        onClose={() =>
+          setErrors((prev) => ({
+            ...prev,
+            general: null,
+          }))
+        }
+      />
+
       <form onSubmit={handleSubmit}>
         <div className="container mx-auto max-w-7xl space-y-6 px-4 py-8 pb-28">
-          <section className="flex justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-            <div>
-              <h1 className="text-3xl font-bold text-slate-800">
-                Create Contact
-              </h1>
-              <p className="mt-2 text-slate-600">
-                Add a new contact using the same section layout as the contact
-                detail page.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate("/contacts")}
-              className="text-lg font-semibold text-blue-600 transition hover:text-blue-700"
-            >
-              Back to Contacts
-            </button>
-          </section>
+          <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 p-5 text-white shadow-lg md:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-100">
+                  Contact Overview
+                </p>
+                <h1 className="mt-1 text-2xl font-bold md:text-3xl">
+                  Create Contact
+                </h1>
+                <p className="mt-2 text-sm text-blue-100 md:text-base">
+                  Add a new contact using the same section layout as the contact
+                  detail page.
+                </p>
+              </div>
 
-          {errors.general && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-bold text-red-700">
-              {errors.general}
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => navigate("/contacts")}
+                className="bg-white !text-blue-700 hover:!bg-blue-50"
+              >
+                Back to Contacts
+              </Button>
             </div>
-          )}
+          </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-xl font-semibold text-slate-800">
@@ -478,11 +429,8 @@ const CreateContact = () => {
                     value={formData.website}
                     onChange={handleChange}
                     placeholder="https://example.com"
-                    className={inputClassName(errors.website)}
+                    className={inputClassName()}
                   />
-                  {errors.website && (
-                    <p className="text-sm text-red-600">{errors.website}</p>
-                  )}
                 </div>
 
                 <div className="md:col-span-2">
@@ -518,6 +466,7 @@ const CreateContact = () => {
                     onChange={handleChange}
                     placeholder="e.g. +1-555-0100"
                     className={inputClassName(errors.phone)}
+                    type="number"
                   />
                   {errors.phone && (
                     <p className="text-sm text-red-600">{errors.phone}</p>
@@ -598,7 +547,26 @@ const CreateContact = () => {
           </div>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-            <h2 className="text-xl font-semibold text-slate-800">Notes</h2>
+            <h2 className="text-xl font-semibold text-slate-800">
+              Notes and Tags
+            </h2>
+            <div className="space-y-2">
+              <label
+                className="block text-sm font-semibold text-slate-700"
+                htmlFor="tagsText"
+              >
+                Tags
+              </label>
+              <input
+                id="tagsText"
+                name="tagsText"
+                value={formData.tagsText}
+                onChange={handleChange}
+                placeholder="Tags (comma separated)"
+                className={inputClassName()}
+              />
+            </div>
+
             <div className="space-y-2">
               <label
                 className="block text-sm font-semibold text-slate-700"
@@ -626,7 +594,7 @@ const CreateContact = () => {
               variant="outline"
               onClick={handleResetForm}
               disabled={loading}
-              className="!border-blue-200 bg-purple-500 !text-white hover:!bg-gradient-to-r hover:!border-blue-100 hover:!to-blue-600 hover:!from-purple-600 hover:!text-white"
+              className="border-white/40 bg-white/10 !text-white hover:!border-white hover:!bg-white/20"
             >
               Reset
             </Button>
@@ -634,7 +602,7 @@ const CreateContact = () => {
               type="submit"
               variant="primary"
               loading={loading}
-              className="!border-blue-200 border-2 bg-blue-500 !text-white hover:!bg-gradient-to-r hover:!to-blue-600 hover:!from-purple-600"
+              className="bg-white !text-blue-700 hover:!bg-blue-50"
             >
               Save Contact
             </Button>

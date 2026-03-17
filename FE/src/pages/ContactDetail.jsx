@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import ContactPhotoPicker from "../components/contacts/ContactPhotoPicker";
+import FavoriteToggle from "../components/contacts/FavoriteToggle";
 import Button from "../components/common/Button";
+import ToastMessage from "../components/common/ToastMessage";
 import api from "../utils/api";
+import { upsertContactMeta } from "../utils/contactMeta";
 import {
   buildContactUploadFormData,
   validateContactPhotoFile,
@@ -22,63 +25,6 @@ const buildLegacyFullAddress = (item) =>
     .map((value) => `${value || ""}`.trim())
     .filter(Boolean)
     .join(", ");
-
-const FavoriteToggle = ({ checked, onChange }) => (
-  <label
-    className={`group flex cursor-pointer items-center justify-between gap-4 rounded-xl border px-4 py-3 transition ${
-      checked
-        ? "border-purple-500 bg-purple-500 shadow-sm"
-        : "border-slate-300 bg-white hover:border-purple-300 hover:bg-purple-50"
-    }`}
-  >
-    <div className="space-y-1">
-      <div
-        className={`text-sm font-semibold ${
-          checked ? "text-white" : "text-slate-800 group-hover:text-purple-700"
-        }`}
-      >
-        Favorite
-      </div>
-      <div
-        className={`text-xs ${
-          checked
-            ? "text-purple-100"
-            : "text-slate-500 group-hover:text-purple-600"
-        }`}
-      >
-        Highlight this contact for faster access.
-      </div>
-    </div>
-    <div className="relative shrink-0">
-      <input
-        type="checkbox"
-        className="peer sr-only"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <div
-        className={`flex h-12 w-12 items-center justify-center rounded-2xl border-2 transition ${
-          checked
-            ? "border-purple-200 bg-purple-200 text-purple-600"
-            : "border-slate-300 bg-slate-100 text-transparent group-hover:border-purple-300 group-hover:bg-purple-50 group-hover:text-purple-600"
-        } peer-focus-visible:ring-2 peer-focus-visible:ring-purple-300 peer-focus-visible:ring-offset-2`}
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-6 w-6"
-          aria-hidden="true"
-        >
-          <path d="M5 13l4 4L19 7" />
-        </svg>
-      </div>
-    </div>
-  </label>
-);
 
 const ScrollableRecordList = ({
   children,
@@ -171,6 +117,30 @@ const toFormData = (contact) => ({
   emails: normalizeEmails(contact),
   addresses: normalizeAddresses(contact),
   socialLinks: normalizeSocialLinks(contact),
+});
+
+const buildContactMeta = (contact) => ({
+  firstName: contact?.firstName || "",
+  lastName: contact?.lastName || "",
+  company: contact?.company || "",
+  jobTitle: contact?.jobTitle || "",
+  phoneNumbers: (Array.isArray(contact?.phones) ? contact.phones : [])
+    .map((item) => ({
+      number: item?.number || item?.value || "",
+      label: item?.label || "mobile",
+      isPrimary: !!item?.isPrimary,
+    }))
+    .filter((item) => item.number),
+  emails: (Array.isArray(contact?.emails) ? contact.emails : [])
+    .map((item) => ({
+      email: item?.email || item?.value || "",
+      label: item?.label || "personal",
+      isPrimary: !!item?.isPrimary,
+    }))
+    .filter((item) => item.email),
+  notes: contact?.notes || "",
+  tags: Array.isArray(contact?.tags) ? contact.tags : [],
+  favorite: !!contact?.favorite,
 });
 
 const ContactDetail = () => {
@@ -381,6 +351,7 @@ const ContactDetail = () => {
       const updatedContact = response?.data?.data;
 
       if (updatedContact) {
+        upsertContactMeta(id, buildContactMeta(updatedContact));
         setContact(updatedContact);
         setFormData(toFormData(updatedContact));
         resetSelectedPhoto();
@@ -452,6 +423,15 @@ const ContactDetail = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <ToastMessage
+        message={saveError || saveMessage}
+        type={saveError ? "error" : "success"}
+        onClose={() => {
+          setSaveError("");
+          setSaveMessage("");
+        }}
+      />
+
       <div className="container mx-auto max-w-7xl px-4 py-8 space-y-6">
         <div className="sticky top-20 z-20 flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-600/95 to-purple-600/95 px-4 py-3 shadow-lg backdrop-blur">
           <Button
@@ -471,22 +451,11 @@ const ContactDetail = () => {
           </Button>
         </div>
 
-        {saveMessage && (
-          <div className="rounded-lg border-2 border-green-700 bg-green-50 px-4 py-3 font-bold text-green-700">
-            {saveMessage}
-          </div>
-        )}
-        {saveError && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 font-bold text-red-700">
-            {saveError}
-          </div>
-        )}
-
         <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6">
           <h2 className="text-xl font-semibold text-slate-800 mb-4">
             Basic Information
           </h2>
-          <div className="grid grid-cols-2 gap-4 items-start">
+          <div className="grid grid-cols-3 gap-4 items-start">
             <div className="md:col-span-1">
               <div className="mb-4">
                 <ContactPhotoPicker
@@ -501,7 +470,7 @@ const ContactDetail = () => {
               </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid col-span-2 md:grid-cols-2 gap-4">
               <input
                 className="w-full rounded-lg border border-slate-300 px-3 py-2"
                 placeholder="Display Name"

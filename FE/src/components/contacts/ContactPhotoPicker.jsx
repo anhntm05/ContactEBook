@@ -20,7 +20,7 @@ const ContactPhotoPicker = ({
             <img
               src={imageUrl}
               alt={displayName || "Contact"}
-              className="h-72 w-72 rounded-2xl border border-slate-200 object-cover shadow-sm"
+              className="w-full h-full rounded-2xl border border-slate-200 object-cover shadow-sm"
             />
           ) : (
             <div className="flex h-72 w-72 items-center justify-center rounded-2xl bg-blue-600 text-2xl font-semibold text-white shadow-sm">

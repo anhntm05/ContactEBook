@@ -1,7 +1,12 @@
 import { getPrimaryEmail, getPrimaryPhone } from "./contactDisplay";
 import * as XLSX from "xlsx";
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const now = new Date();
+  const datePart = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
+  const timePart = now.toLocaleTimeString('en-GB', { hour12: false }).replace(/:/g, '-'); // HH-MM-SS
+  return `${datePart}_${timePart}`;
+};
 
 const csvEscape = (value) => {
   const str = `${value ?? ""}`;

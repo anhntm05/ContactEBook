@@ -1,16 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import ContactList from "../components/contacts/ContactList";
 import ExportContactsMenu from "../components/contacts/ExportContactsMenu";
 import Button from "../components/common/Button";
 import Sidebar from "../components/common/Sidebar";
+import ToastMessage from "../components/common/ToastMessage";
 import api from "../utils/api";
 import {
   exportContactsToCSV,
   exportContactsToExcel,
   exportContactsToVCard,
 } from "../utils/contactExport";
+import {
+  CONTACT_IMPORT_ACCEPT,
+  parseContactsImportFile,
+} from "../utils/contactImport";
 import {
   loadContactMetaMap,
   removeContactMeta,
@@ -27,35 +32,39 @@ const normalizeContacts = (items) => {
     const meta = metaMap[id] || {};
 
     const phoneNumbers =
-      meta.phoneNumbers ||
       contact.phoneNumbers ||
+      meta.phoneNumbers ||
       contact.phones ||
       (contact.phone ? [{ number: contact.phone, label: "Primary" }] : []);
 
     const emails =
-      meta.emails ||
       contact.emails ||
+      meta.emails ||
       (contact.email ? [{ email: contact.email, label: "Primary" }] : []);
 
-    const fallbackName =
+    const serverName =
       contact.name ||
       contact.displayName ||
       `${contact.firstName || ""} ${contact.lastName || ""}`.trim();
 
+    const metaName =
+      meta.firstName || meta.lastName
+        ? `${meta.firstName || ""} ${meta.lastName || ""}`.trim()
+        : "";
+
     return {
       ...contact,
       id,
-      name:
-        meta.firstName || meta.lastName
-          ? `${meta.firstName || ""} ${meta.lastName || ""}`.trim()
-          : fallbackName || "Unnamed Contact",
-      company: meta.company ?? contact.company ?? "",
-      jobTitle: meta.jobTitle ?? contact.jobTitle ?? "",
+      name: serverName || metaName || "Unnamed Contact",
+      company: contact.company ?? meta.company ?? "",
+      jobTitle: contact.jobTitle ?? meta.jobTitle ?? "",
       phoneNumbers,
       emails,
-      tags: meta.tags || contact.tags || [],
+      tags: contact.tags || meta.tags || [],
       favorite:
-        typeof meta.favorite === "boolean" ? meta.favorite : !!contact.favorite,
+        typeof contact.favorite === "boolean"
+          ? contact.favorite
+          : !!meta.favorite,
       createdAt: contact.createdAt || meta.createdAt,
       updatedAt: contact.updatedAt || meta.updatedAt,
     };
@@ -71,6 +80,7 @@ const Dashboard = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [importError, setImportError] = useState("");
   const [activeTab, setActiveTab] = useState("contacts");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -88,8 +98,10 @@ const Dashboard = () => {
   });
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const importInputRef = useRef(null);
 
   const resetSearchSortAndFilter = () => {
     setQuery("");
@@ -259,6 +271,82 @@ const Dashboard = () => {
     setDeleteDialog({ open: true, ids, label });
   };
 
+  const openImportPicker = () => {
+    setImportError("");
+    if (!importInputRef.current) return;
+    importInputRef.current.value = "";
+    importInputRef.current.click();
+  };
+
+  const handleImportFileSelection = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setImportError("");
+    setSuccessMessage("");
+
+    try {
+      const { contacts: importedContacts, skipped } = await parseContactsImportFile(file);
+
+      if (!importedContacts.length) {
+        setImportError(
+          skipped.length
+            ? `No valid contacts were found in ${file.name}.`
+            : `The selected file does not contain importable contacts.`,
+        );
+        return;
+      }
+
+      let importedCount = 0;
+      let failedCount = 0;
+
+      for (const importedContact of importedContacts) {
+        try {
+          await api.post("/contacts", importedContact);
+          importedCount += 1;
+        } catch {
+          failedCount += 1;
+        }
+      }
+
+      await fetchContacts();
+
+      if (!importedCount) {
+        const parts = [`Unable to import contacts from ${file.name}.`];
+        if (skipped.length) {
+          parts.push(`Skipped ${skipped.length} invalid entr${skipped.length === 1 ? "y" : "ies"}.`);
+        }
+        if (failedCount) {
+          parts.push(`${failedCount} entr${failedCount === 1 ? "y failed" : "ies failed"} during upload.`);
+        }
+        setImportError(parts.join(" "));
+        return;
+      }
+
+      const parts = [
+        `Imported ${importedCount} contact${importedCount === 1 ? "" : "s"} from ${file.name}.`,
+      ];
+
+      if (skipped.length) {
+        parts.push(`Skipped ${skipped.length} invalid entr${skipped.length === 1 ? "y" : "ies"}.`);
+      }
+
+      if (failedCount) {
+        parts.push(`${failedCount} entr${failedCount === 1 ? "y failed" : "ies failed"} during upload.`);
+      }
+
+      setSuccessMessage(parts.join(" "));
+    } catch (importRequestError) {
+      setImportError(
+        importRequestError?.message || "Failed to import contacts from the selected file.",
+      );
+    } finally {
+      event.target.value = "";
+      setImporting(false);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!deleteDialog.ids.length) {
       setDeleteDialog({ open: false, ids: [], label: "" });
@@ -269,13 +357,19 @@ const Dashboard = () => {
     setDeleteError("");
 
     try {
-      await Promise.all(deleteDialog.ids.map((id) => api.delete(`/contacts/${id}`)));
-      deleteDialog.ids.forEach((id) => removeContactMeta(id));
+      const response = await api.delete("/contacts", {
+        data: { ids: deleteDialog.ids },
+      });
+      const deletedIds = Array.isArray(response?.data?.data?.ids)
+        ? response.data.data.ids
+        : deleteDialog.ids;
+
+      deletedIds.forEach((id) => removeContactMeta(id));
 
       setSelectedIds(new Set());
       setDeleteDialog({ open: false, ids: [], label: "" });
       setSuccessMessage(
-        deleteDialog.ids.length > 1
+        deletedIds.length > 1
           ? "Contacts deleted successfully."
           : "Contact deleted successfully.",
       );
@@ -461,7 +555,25 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <ToastMessage
+        message={deleteError || importError || successMessage}
+        type={deleteError || importError ? "error" : "success"}
+        onClose={() => {
+          setSuccessMessage("");
+          setDeleteError("");
+          setImportError("");
+        }}
+      />
+
       <div className="container mx-auto max-w-7xl px-4 py-8 space-y-6">
+        <input
+          ref={importInputRef}
+          type="file"
+          accept={CONTACT_IMPORT_ACCEPT}
+          className="hidden"
+          onChange={handleImportFileSelection}
+        />
+
         <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 p-5 md:p-6 text-white shadow-lg">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -476,6 +588,15 @@ const Dashboard = () => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
+              <Button
+                variant="outline"
+                onClick={openImportPicker}
+                loading={importing}
+                className="border-white/40 bg-white/10 !text-white hover:!border-white hover:!bg-white/20"
+              >
+                Import Contacts
+              </Button>
+
               <Button
                 variant="outline"
                 onClick={() => setSidebarOpen(true)}
@@ -494,12 +615,6 @@ const Dashboard = () => {
             </div>
           </div>
         </section>
-
-        {successMessage && (
-          <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-green-700">
-            {successMessage}
-          </div>
-        )}
 
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
@@ -691,12 +806,6 @@ const Dashboard = () => {
             <p className="text-gray-600 mb-4">
               Delete {deleteDialog.label}? This action cannot be undone.
             </p>
-
-            {deleteError && (
-              <div className="rounded border border-red-300 bg-red-100 px-3 py-2 text-red-700 mb-3">
-                {deleteError}
-              </div>
-            )}
 
             <div className="flex justify-end gap-3">
               <Button
