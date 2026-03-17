@@ -105,7 +105,7 @@ const toListItem = (req, contact) => {
     tags: Array.isArray(contact?.tags) ? contact.tags : [],
     favorite: !!contact?.favorite,
     photoUrl: resolveContactPhotoUrl(req, contact?.photoUrl || ""),
-    addresses: Array.isArray(contact?.addresses) ? contact.addresses : [],
+    addresses: normalizeAddressPayload(contact?.addresses),
     website: contact?.website || "",
     socialLinks: Array.isArray(contact?.socialLinks) ? contact.socialLinks : [],
     birthday: contact?.birthday || null,
@@ -145,7 +145,7 @@ const toDetailItem = (req, contact) => {
       isPrimary: phone.isPrimary,
     })),
     emails,
-    addresses: Array.isArray(contact?.addresses) ? contact.addresses : [],
+    addresses: normalizeAddressPayload(contact?.addresses),
     socialLinks: Array.isArray(contact?.socialLinks) ? contact.socialLinks : [],
     tags: Array.isArray(contact?.tags) ? contact.tags : [],
     groupIds: Array.isArray(contact?.groupIds) ? contact.groupIds : [],
@@ -187,6 +187,16 @@ const requireAuthUserId = (req) => {
 const normalizeString = (value, fallback = "") =>
   `${value ?? fallback}`.trim();
 
+const buildLegacyFullAddress = (address = {}) =>
+  [
+    normalizeString(address?.street, ""),
+    normalizeString(address?.city, ""),
+    normalizeString(address?.state, ""),
+    normalizeString(address?.country, ""),
+  ]
+    .filter(Boolean)
+    .join(", ");
+
 const normalizePhonePayload = (phones = []) =>
   (Array.isArray(phones) ? phones : [])
     .map((phone) => ({
@@ -209,18 +219,14 @@ const normalizeAddressPayload = (addresses = []) =>
   (Array.isArray(addresses) ? addresses : [])
     .map((address) => ({
       label: normalizeString(address?.label, "home") || "home",
-      street: normalizeString(address?.street, ""),
-      city: normalizeString(address?.city, ""),
-      state: normalizeString(address?.state, ""),
+      fullAddress:
+        normalizeString(address?.fullAddress, "") || buildLegacyFullAddress(address),
       postalCode: normalizeString(
         address?.postalCode || address?.zip || address?.zipcode,
         ""
       ),
-      country: normalizeString(address?.country, ""),
     }))
-    .filter((address) =>
-      [address.street, address.city, address.state, address.postalCode, address.country].some(Boolean)
-    );
+    .filter((address) => [address.fullAddress, address.postalCode].some(Boolean));
 
 const normalizeSocialPayload = (socialLinks = []) =>
   (Array.isArray(socialLinks) ? socialLinks : [])
@@ -312,6 +318,10 @@ export const createContactService = async (req) => {
       ...req.validatedContactData,
       createdBy,
     };
+
+    if ("addresses" in contactData) {
+      contactData.addresses = normalizeAddressPayload(contactData.addresses);
+    }
 
     if (uploadedPhotoUrl) {
       contactData.photoUrl = uploadedPhotoUrl;

@@ -45,11 +45,8 @@ const emailSchema = new mongoose.Schema(
 const addressSchema = new mongoose.Schema(
   {
     label: { type: String, trim: true, default: "home" },
-    street: { type: String, trim: true },
-    city: { type: String, trim: true },
-    state: { type: String, trim: true },
+    fullAddress: { type: String, trim: true },
     postalCode: { type: String, trim: true },
-    country: { type: String, trim: true },
   },
   { _id: false }
 );

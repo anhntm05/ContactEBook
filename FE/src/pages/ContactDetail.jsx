@@ -12,13 +12,16 @@ const createPhone = () => ({ label: "mobile", value: "", isPrimary: false });
 const createEmail = () => ({ label: "personal", value: "", isPrimary: false });
 const createAddress = () => ({
   label: "home",
-  street: "",
-  city: "",
-  state: "",
+  fullAddress: "",
   postalCode: "",
-  country: "",
 });
 const createSocial = () => ({ platform: "", url: "" });
+
+const buildLegacyFullAddress = (item) =>
+  [item?.street, item?.city, item?.state, item?.country]
+    .map((value) => `${value || ""}`.trim())
+    .filter(Boolean)
+    .join(", ");
 
 const FavoriteToggle = ({ checked, onChange }) => (
   <label
@@ -38,7 +41,9 @@ const FavoriteToggle = ({ checked, onChange }) => (
       </div>
       <div
         className={`text-xs ${
-          checked ? "text-purple-100" : "text-slate-500 group-hover:text-purple-600"
+          checked
+            ? "text-purple-100"
+            : "text-slate-500 group-hover:text-purple-600"
         }`}
       >
         Highlight this contact for faster access.
@@ -127,17 +132,10 @@ const normalizeAddresses = (contact) => {
   const mapped = (Array.isArray(contact?.addresses) ? contact.addresses : [])
     .map((item) => ({
       label: item?.label || "home",
-      street: item?.street || "",
-      city: item?.city || "",
-      state: item?.state || "",
+      fullAddress: item?.fullAddress || buildLegacyFullAddress(item),
       postalCode: item?.postalCode || "",
-      country: item?.country || "",
     }))
-    .filter((item) =>
-      [item.street, item.city, item.state, item.postalCode, item.country].some(
-        Boolean,
-      ),
-    );
+    .filter((item) => [item.fullAddress, item.postalCode].some(Boolean));
 
   return mapped.length ? mapped : [createAddress()];
 };
@@ -350,21 +348,10 @@ const ContactDetail = () => {
       addresses: formData.addresses
         .map((item) => ({
           label: item.label?.trim() || "home",
-          street: item.street?.trim() || "",
-          city: item.city?.trim() || "",
-          state: item.state?.trim() || "",
+          fullAddress: item.fullAddress?.trim() || "",
           postalCode: item.postalCode?.trim() || "",
-          country: item.country?.trim() || "",
         }))
-        .filter((item) =>
-          [
-            item.street,
-            item.city,
-            item.state,
-            item.postalCode,
-            item.country,
-          ].some(Boolean),
-        ),
+        .filter((item) => [item.fullAddress, item.postalCode].some(Boolean)),
       socialLinks: formData.socialLinks
         .map((item) => ({
           platform: item.platform?.trim() || "",
@@ -499,75 +486,76 @@ const ContactDetail = () => {
           <h2 className="text-xl font-semibold text-slate-800 mb-4">
             Basic Information
           </h2>
-          <div className="grid grid-cols-2 gap-4 items-start mb-6">
+          <div className="grid grid-cols-2 gap-4 items-start">
             <div className="md:col-span-1">
-              <ContactPhotoPicker
-                imageUrl={photoPreviewUrl || formData.photoUrl}
-                displayName={formData.displayName}
-                fileName={photoFile?.name || ""}
-                error={null}
-                onFileChange={handlePhotoChange}
-                onRemove={handleRemovePhoto}
-              />
+              <div className="mb-4">
+                <ContactPhotoPicker
+                  imageUrl={photoPreviewUrl || formData.photoUrl}
+                  displayName={formData.displayName}
+                  fileName={photoFile?.name || ""}
+                  error={null}
+                  onFileChange={handlePhotoChange}
+                  onRemove={handleRemovePhoto}
+                  actionsLayout="split"
+                />
+              </div>
             </div>
-            <div className="md:col-span-1">
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <input
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                placeholder="Display Name"
+                value={formData.displayName}
+                onChange={(e) => updateField("displayName", e.target.value)}
+              />
+              <input
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                placeholder="Nickname"
+                value={formData.nickname}
+                onChange={(e) => updateField("nickname", e.target.value)}
+              />
+              <input
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                placeholder="Company"
+                value={formData.company}
+                onChange={(e) => updateField("company", e.target.value)}
+              />
+              <input
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                placeholder="Job Title"
+                value={formData.jobTitle}
+                onChange={(e) => updateField("jobTitle", e.target.value)}
+              />
+              <input
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                placeholder="Department"
+                value={formData.department}
+                onChange={(e) => updateField("department", e.target.value)}
+              />
+              <input
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                placeholder="Website"
+                value={formData.website}
+                onChange={(e) => updateField("website", e.target.value)}
+              />
+
+              <input
+                type="date"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                value={formData.birthday}
+                onChange={(e) => updateField("birthday", e.target.value)}
+              />
+              <input
+                className="w-full rounded-lg border border-slate-300 px-3 py-2"
+                placeholder="Source"
+                value={formData.source}
+                onChange={(e) => updateField("source", e.target.value)}
+              />
               <FavoriteToggle
                 checked={formData.favorite}
                 onChange={(value) => updateField("favorite", value)}
               />
             </div>
-          </div>
-
-          <div className="grid md:grid-cols-4 gap-4">
-            <input
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
-              placeholder="Display Name"
-              value={formData.displayName}
-              onChange={(e) => updateField("displayName", e.target.value)}
-            />
-            <input
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
-              placeholder="Nickname"
-              value={formData.nickname}
-              onChange={(e) => updateField("nickname", e.target.value)}
-            />
-            <input
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
-              placeholder="Company"
-              value={formData.company}
-              onChange={(e) => updateField("company", e.target.value)}
-            />
-            <input
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
-              placeholder="Job Title"
-              value={formData.jobTitle}
-              onChange={(e) => updateField("jobTitle", e.target.value)}
-            />
-            <input
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
-              placeholder="Department"
-              value={formData.department}
-              onChange={(e) => updateField("department", e.target.value)}
-            />
-            <input
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
-              placeholder="Website"
-              value={formData.website}
-              onChange={(e) => updateField("website", e.target.value)}
-            />
-
-            <input
-              type="date"
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
-              value={formData.birthday}
-              onChange={(e) => updateField("birthday", e.target.value)}
-            />
-            <input
-              className="w-full rounded-lg border border-slate-300 px-3 py-2"
-              placeholder="Source"
-              value={formData.source}
-              onChange={(e) => updateField("source", e.target.value)}
-            />
           </div>
         </section>
 
@@ -596,7 +584,12 @@ const ContactDetail = () => {
                       placeholder="Label"
                       value={item.label}
                       onChange={(e) =>
-                        updateListField("phones", index, "label", e.target.value)
+                        updateListField(
+                          "phones",
+                          index,
+                          "label",
+                          e.target.value,
+                        )
                       }
                     />
                     <input
@@ -604,7 +597,12 @@ const ContactDetail = () => {
                       placeholder="Phone"
                       value={item.value}
                       onChange={(e) =>
-                        updateListField("phones", index, "value", e.target.value)
+                        updateListField(
+                          "phones",
+                          index,
+                          "value",
+                          e.target.value,
+                        )
                       }
                     />
                     <label className="md:col-span-2 text-sm text-slate-700 flex items-center gap-2">
@@ -658,7 +656,12 @@ const ContactDetail = () => {
                       placeholder="Label"
                       value={item.label}
                       onChange={(e) =>
-                        updateListField("emails", index, "label", e.target.value)
+                        updateListField(
+                          "emails",
+                          index,
+                          "label",
+                          e.target.value,
+                        )
                       }
                     />
                     <input
@@ -666,7 +669,12 @@ const ContactDetail = () => {
                       placeholder="Email"
                       value={item.value}
                       onChange={(e) =>
-                        updateListField("emails", index, "value", e.target.value)
+                        updateListField(
+                          "emails",
+                          index,
+                          "value",
+                          e.target.value,
+                        )
                       }
                     />
                     <label className="md:col-span-2 text-sm text-slate-700 flex items-center gap-2">
@@ -698,156 +706,139 @@ const ContactDetail = () => {
             </ScrollableRecordList>
           </section>
         </div>
-        <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-slate-800">Addresses</h2>
-            <Button
-              variant="outline"
-              onClick={() => addListItem("addresses", createAddress)}
-            >
-              + Add
-            </Button>
-          </div>
-          <ScrollableRecordList maxHeightClass="max-h-[27rem]">
-            {formData.addresses.map((item, index) => (
-              <div
-                key={`address-${index}`}
-                className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+        <div className="grid md:grid-cols-2 gap-4">
+          <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-800">
+                Addresses
+              </h2>
+              <Button
+                variant="outline"
+                onClick={() => addListItem("addresses", createAddress)}
               >
-                <div className="flex gap-2">
-                  <div className="md:col-span-3 font-semibold text-slate-700">
-                    Address {index + 1}
+                + Add
+              </Button>
+            </div>
+            <ScrollableRecordList maxHeightClass="max-h-[27rem]">
+              {formData.addresses.map((item, index) => (
+                <div
+                  key={`address-${index}`}
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                >
+                  <div className="flex gap-2">
+                    <div className="md:col-span-3 font-semibold text-slate-700">
+                      Address {index + 1}
+                    </div>
+                    <Button
+                      variant="danger"
+                      onClick={() => removeListItem("addresses", index)}
+                    >
+                      Remove
+                    </Button>
                   </div>
-                  <Button
-                    variant="danger"
-                    onClick={() => removeListItem("addresses", index)}
-                  >
-                    Remove
-                  </Button>
+                  <div className="grid md:grid-cols-12 gap-2 py-2">
+                    <input
+                      className="md:col-span-3 rounded-lg border border-slate-300 px-3 py-2"
+                      placeholder="Label"
+                      value={item.label}
+                      onChange={(e) =>
+                        updateListField(
+                          "addresses",
+                          index,
+                          "label",
+                          e.target.value,
+                        )
+                      }
+                    />
+                    <input
+                      className="md:col-span-6 rounded-lg border border-slate-300 px-3 py-2"
+                      placeholder="Full Address"
+                      value={item.fullAddress}
+                      onChange={(e) =>
+                        updateListField(
+                          "addresses",
+                          index,
+                          "fullAddress",
+                          e.target.value,
+                        )
+                      }
+                    />
+                    <input
+                      className="md:col-span-3 rounded-lg border border-slate-300 px-3 py-2"
+                      placeholder="Postal Code"
+                      value={item.postalCode}
+                      onChange={(e) =>
+                        updateListField(
+                          "addresses",
+                          index,
+                          "postalCode",
+                          e.target.value,
+                        )
+                      }
+                    />
+                  </div>
                 </div>
-                <div className="grid md:grid-cols-3 gap-2 py-2">
-                  <input
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    placeholder="Label"
-                    value={item.label}
-                    onChange={(e) =>
-                      updateListField("addresses", index, "label", e.target.value)
-                    }
-                  />
-                  <input
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    placeholder="Street"
-                    value={item.street}
-                    onChange={(e) =>
-                      updateListField(
-                        "addresses",
-                        index,
-                        "street",
-                        e.target.value,
-                      )
-                    }
-                  />
-                  <input
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    placeholder="City"
-                    value={item.city}
-                    onChange={(e) =>
-                      updateListField("addresses", index, "city", e.target.value)
-                    }
-                  />
-                </div>
-                <div className="grid md:grid-cols-3 gap-2">
-                  <input
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    placeholder="State"
-                    value={item.state}
-                    onChange={(e) =>
-                      updateListField("addresses", index, "state", e.target.value)
-                    }
-                  />
-                  <input
-                    className="rounded-lg border border-slate-300 px-3 py-2"
-                    placeholder="Postal Code"
-                    value={item.postalCode}
-                    onChange={(e) =>
-                      updateListField(
-                        "addresses",
-                        index,
-                        "postalCode",
-                        e.target.value,
-                      )
-                    }
-                  />
-                  <input
-                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2"
-                    placeholder="Country"
-                    value={item.country}
-                    onChange={(e) =>
-                      updateListField(
-                        "addresses",
-                        index,
-                        "country",
-                        e.target.value,
-                      )
-                    }
-                  />
-                </div>
-              </div>
-            ))}
-          </ScrollableRecordList>
-        </section>
+              ))}
+            </ScrollableRecordList>
+          </section>
 
-        <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-slate-800">
-              Social Links
-            </h2>
-            <Button
-              variant="outline"
-              onClick={() => addListItem("socialLinks", createSocial)}
-            >
-              + Add
-            </Button>
-          </div>
-          <ScrollableRecordList>
-            {formData.socialLinks.map((item, index) => (
-              <div
-                key={`social-${index}`}
-                className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+          <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-slate-800">
+                Social Links
+              </h2>
+              <Button
+                variant="outline"
+                onClick={() => addListItem("socialLinks", createSocial)}
               >
-                <div className="grid md:grid-cols-12 gap-2 items-center">
-                  <input
-                    className="md:col-span-4 rounded-lg border border-slate-300 px-3 py-2"
-                    placeholder="Platform"
-                    value={item.platform}
-                    onChange={(e) =>
-                      updateListField(
-                        "socialLinks",
-                        index,
-                        "platform",
-                        e.target.value,
-                      )
-                    }
-                  />
-                  <input
-                    className="md:col-span-7 rounded-lg border border-slate-300 px-3 py-2"
-                    placeholder="URL"
-                    value={item.url}
-                    onChange={(e) =>
-                      updateListField("socialLinks", index, "url", e.target.value)
-                    }
-                  />
-                  <Button
-                    variant="danger"
-                    onClick={() => removeListItem("socialLinks", index)}
-                  >
-                    Remove
-                  </Button>
+                + Add
+              </Button>
+            </div>
+            <ScrollableRecordList>
+              {formData.socialLinks.map((item, index) => (
+                <div
+                  key={`social-${index}`}
+                  className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                >
+                  <div className="grid md:grid-cols-12 gap-2 items-center">
+                    <input
+                      className="md:col-span-4 rounded-lg border border-slate-300 px-3 py-2"
+                      placeholder="Platform"
+                      value={item.platform}
+                      onChange={(e) =>
+                        updateListField(
+                          "socialLinks",
+                          index,
+                          "platform",
+                          e.target.value,
+                        )
+                      }
+                    />
+                    <input
+                      className="md:col-span-7 rounded-lg border border-slate-300 px-3 py-2"
+                      placeholder="URL"
+                      value={item.url}
+                      onChange={(e) =>
+                        updateListField(
+                          "socialLinks",
+                          index,
+                          "url",
+                          e.target.value,
+                        )
+                      }
+                    />
+                    <Button
+                      variant="danger"
+                      onClick={() => removeListItem("socialLinks", index)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </ScrollableRecordList>
-        </section>
+              ))}
+            </ScrollableRecordList>
+          </section>
+        </div>
 
         <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
           <h2 className="text-xl font-semibold text-slate-800">

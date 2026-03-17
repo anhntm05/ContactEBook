@@ -203,40 +203,46 @@ const collectEmails = (contact) =>
 const collectAddresses = (contact) => {
   const fromAddresses = ensureArray(contact?.addresses).map((item) => ({
     label: trimValue(item?.label),
-    street: trimValue(item?.street),
-    city: trimValue(item?.city),
-    state: trimValue(item?.state),
+    fullAddress:
+      trimValue(item?.fullAddress) ||
+      [item?.street, item?.city, item?.state, item?.country]
+        .map(trimValue)
+        .filter(Boolean)
+        .join(", "),
     postalCode: trimValue(item?.postalCode || item?.zip),
-    country: trimValue(item?.country),
   }));
 
   const legacyAddress =
     typeof contact?.address === "string"
       ? {
           label: "home",
-          street: trimValue(contact.address),
-          city: "",
-          state: "",
+          fullAddress: trimValue(contact.address),
           postalCode: "",
-          country: "",
         }
       : contact?.address && typeof contact.address === "object"
         ? {
             label: trimValue(contact.address?.label) || "home",
-            street: trimValue(contact.address?.street),
-            city: trimValue(contact.address?.city),
-            state: trimValue(contact.address?.state),
+            fullAddress:
+              trimValue(contact.address?.fullAddress) ||
+              [
+                contact.address?.street,
+                contact.address?.city,
+                contact.address?.state,
+                contact.address?.country,
+              ]
+                .map(trimValue)
+                .filter(Boolean)
+                .join(", "),
             postalCode: trimValue(contact.address?.postalCode || contact.address?.zip),
-            country: trimValue(contact.address?.country),
           }
         : null;
 
   return dedupeEntries(
-    [...fromAddresses, legacyAddress].filter((item) =>
-      item && [item.street, item.city, item.state, item.postalCode, item.country].some(Boolean)
+    [...fromAddresses, legacyAddress].filter(
+      (item) => item && [item.fullAddress, item.postalCode].some(Boolean)
     ),
     (entry) =>
-      [entry.label, entry.street, entry.city, entry.state, entry.postalCode, entry.country]
+      [entry.label, entry.fullAddress, entry.postalCode]
         .map((part) => part.toLowerCase())
         .join("|")
   );
@@ -359,11 +365,11 @@ const buildVCard = (contact) => {
     const addressValue = [
       "",
       "",
-      escapeVCardText(address.street),
-      escapeVCardText(address.city),
-      escapeVCardText(address.state),
+      escapeVCardText(address.fullAddress),
+      "",
+      "",
       escapeVCardText(address.postalCode),
-      escapeVCardText(address.country),
+      "",
     ].join(";");
 
     if (customLabel) {

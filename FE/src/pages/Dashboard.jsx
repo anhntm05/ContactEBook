@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import ContactList from "../components/contacts/ContactList";
 import ExportContactsMenu from "../components/contacts/ExportContactsMenu";
 import Button from "../components/common/Button";
+import Sidebar from "../components/common/Sidebar";
 import api from "../utils/api";
 import {
   exportContactsToCSV,
@@ -71,6 +72,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("contacts");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState("recent");
@@ -437,17 +439,37 @@ const Dashboard = () => {
     },
   ];
 
+  const dashboardNavItems = [
+    {
+      key: "contacts",
+      label: "Contact List",
+      description: "Search, filter, export, and manage your contacts.",
+      badge: `${contacts.length}`,
+    },
+    {
+      key: "statistics",
+      label: "Statistics",
+      description: "See summary cards for totals, favorites, and recent activity.",
+      badge: `${stats.total}`,
+    },
+  ];
+
+  const handleSelectDashboardTab = (tabKey) => {
+    setActiveTab(tabKey);
+    setSidebarOpen(false);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="container mx-auto max-w-7xl px-4 py-8 space-y-6">
-        <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 p-6 md:p-8 text-white shadow-lg">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 p-5 md:p-6 text-white shadow-lg">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm font-medium text-blue-100">Dashboard Overview</p>
-              <h1 className="text-3xl font-bold mt-1">
+              <h1 className="mt-1 text-2xl font-bold md:text-3xl">
                 Welcome back, {user?.username || "User"}
               </h1>
-              <p className="text-blue-100 mt-2">
+              <p className="mt-2 text-sm text-blue-100 md:text-base">
                 Track your contacts, discover important updates, and manage everything in one
                 place.
               </p>
@@ -455,16 +477,20 @@ const Dashboard = () => {
 
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
+                variant="outline"
+                onClick={() => setSidebarOpen(true)}
+                className="border-white/40 bg-white/10 !text-white hover:!border-white hover:!bg-white/20"
+              >
+                Menu
+              </Button>
+
+              <Button
                 variant="primary"
                 onClick={() => navigate("/contacts/new")}
                 className="bg-white !text-blue-700 hover:!bg-blue-50"
               >
                 Add New Contact
               </Button>
-
-              <div className="rounded-lg bg-white/15 px-4 py-2 text-sm backdrop-blur-sm">
-                Signed in as <span className="font-semibold">{user?.email || "Profile"}</span>
-              </div>
             </div>
           </div>
         </section>
@@ -480,33 +506,6 @@ const Dashboard = () => {
             {error}
           </div>
         )}
-
-        <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-2">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveTab("contacts")}
-              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                activeTab === "contacts"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-            >
-              Contact List
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("statistics")}
-              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                activeTab === "statistics"
-                  ? "bg-purple-600 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-            >
-              Statistics
-            </button>
-          </div>
-        </section>
 
         {activeTab === "statistics" ? (
           <section className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -551,7 +550,7 @@ const Dashboard = () => {
                     setPage(1);
                   }}
                   placeholder="Search by name, phone, email, company..."
-                  className="w-full rounded-lg border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-3/4 rounded-lg border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </label>
 
@@ -596,10 +595,10 @@ const Dashboard = () => {
                 Reset
               </Button>
 
-              <div className="text-sm text-slate-600 rounded-lg bg-slate-100 px-3 py-2.5">
+              {/* <div className="text-sm text-slate-600 rounded-lg bg-slate-100 px-3 py-2.5">
                 Showing <span className="font-semibold text-slate-800">{filteredContacts.length}</span>{" "}
                 result{filteredContacts.length === 1 ? "" : "s"}
-              </div>
+              </div> */}
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
@@ -675,6 +674,15 @@ const Dashboard = () => {
           </section>
         )}
       </div>
+
+      <Sidebar
+        open={sidebarOpen}
+        title="Dashboard"
+        items={dashboardNavItems}
+        activeKey={activeTab}
+        onSelect={handleSelectDashboardTab}
+        onClose={() => setSidebarOpen(false)}
+      />
 
       {deleteDialog.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">

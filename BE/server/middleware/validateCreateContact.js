@@ -158,6 +158,42 @@ const validateSocialLinks = (socialLinks, errors) => {
   });
 };
 
+const validateAddressEntries = (addresses, errors) => {
+  if (addresses === undefined) return;
+
+  if (!Array.isArray(addresses)) {
+    addError(errors, "addresses must be an array when provided");
+    return;
+  }
+
+  addresses.forEach((address, index) => {
+    if (!isObject(address)) {
+      addError(errors, `addresses[${index}] must be an object`);
+      return;
+    }
+
+    if (address.label !== undefined && address.label !== null && typeof address.label !== "string") {
+      addError(errors, `addresses[${index}].label must be a string`);
+    }
+
+    if (
+      address.fullAddress !== undefined &&
+      address.fullAddress !== null &&
+      typeof address.fullAddress !== "string"
+    ) {
+      addError(errors, `addresses[${index}].fullAddress must be a string`);
+    }
+
+    if (
+      address.postalCode !== undefined &&
+      address.postalCode !== null &&
+      typeof address.postalCode !== "string"
+    ) {
+      addError(errors, `addresses[${index}].postalCode must be a string`);
+    }
+  });
+};
+
 const validateCreateContact = (req, res, next) => {
   const payload = trimStringDeep(req.body || {});
   const errors = [];
@@ -200,6 +236,7 @@ const validateCreateContact = (req, res, next) => {
 
   validatePhoneEntries(payload.phones, errors);
   validateEmailEntries(payload.emails, errors);
+  validateAddressEntries(payload.addresses, errors);
   validateSocialLinks(payload.socialLinks, errors);
 
   if (payload.tags !== undefined && !Array.isArray(payload.tags)) {
