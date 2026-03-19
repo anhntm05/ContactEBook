@@ -43,6 +43,11 @@ const normalizeServerErrors = (error) => {
   );
 };
 
+const getServerFieldErrors = (error) => {
+  const fieldErrors = error?.response?.data?.fieldErrors;
+  return fieldErrors && typeof fieldErrors === "object" ? fieldErrors : {};
+};
+
 const buildPayload = (formData) => {
   const payload = {
     displayName: formData.displayName.trim(),
@@ -263,7 +268,15 @@ const CreateContact = () => {
         state: { successMessage: "Contact created successfully." },
       });
     } catch (error) {
-      setErrors({ general: normalizeServerErrors(error) });
+      const fieldErrors = getServerFieldErrors(error);
+
+      setErrors({
+        ...fieldErrors,
+        general:
+          Object.keys(fieldErrors).length > 0
+            ? null
+            : normalizeServerErrors(error),
+      });
     } finally {
       setLoading(false);
     }

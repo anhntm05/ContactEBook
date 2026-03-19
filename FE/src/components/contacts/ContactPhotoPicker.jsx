@@ -8,6 +8,7 @@ const ContactPhotoPicker = ({
   onFileChange,
   onRemove,
   actionsLayout = "stack",
+  disabled = false,
 }) => {
   const initials = getDisplayInitials({ displayName });
   const isSplitActions = actionsLayout === "split";
@@ -37,39 +38,42 @@ const ContactPhotoPicker = ({
           </div> */}
         </div>
 
-        <div
-          className={
-            isSplitActions
-              ? "grid w-full max-w-[18rem] grid-cols-2 gap-3"
-              : "flex flex-col items-start gap-3"
-          }
-        >
-          <label
-            className={`inline-flex cursor-pointer items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 ${
-              isSplitActions ? (imageUrl ? "w-full" : "col-span-2 w-full") : ""
-            }`}
+        {!disabled && (
+          <div
+            className={
+              isSplitActions
+                ? "grid w-full max-w-[18rem] grid-cols-2 gap-3"
+                : "flex flex-col items-start gap-3"
+            }
           >
-            <input
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              onChange={onFileChange}
-            />
-            Upload Image
-          </label>
-
-          {imageUrl && (
-            <button
-              type="button"
-              onClick={onRemove}
-              className={`inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 ${
-                isSplitActions ? "w-full" : ""
+            <label
+              className={`inline-flex cursor-pointer items-center justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 ${
+                isSplitActions ? (imageUrl ? "w-full" : "col-span-2 w-full") : ""
               }`}
             >
-              Remove Photo
-            </button>
-          )}
-        </div>
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={onFileChange}
+                disabled={disabled}
+              />
+              Upload Image
+            </label>
+
+            {imageUrl && (
+              <button
+                type="button"
+                onClick={onRemove}
+                className={`inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100 ${
+                  isSplitActions ? "w-full" : ""
+                }`}
+              >
+                Remove Photo
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}

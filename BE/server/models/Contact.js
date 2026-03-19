@@ -86,10 +86,6 @@ const ContactSchema = new mongoose.Schema(
     birthday: { type: Date },
     notes: { type: String, trim: true },
     tags: { type: [String], default: [] },
-    groupIds: {
-      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "Group" }],
-      default: [],
-    },
     favorite: { type: Boolean, default: false },
     source: { type: String, trim: true, default: "manual" },
     createdBy: {

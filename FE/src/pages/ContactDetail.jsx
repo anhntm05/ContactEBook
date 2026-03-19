@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import ContactPhotoPicker from "../components/contacts/ContactPhotoPicker";
 import FavoriteToggle from "../components/contacts/FavoriteToggle";
 import Button from "../components/common/Button";
@@ -119,6 +119,9 @@ const toFormData = (contact) => ({
   socialLinks: normalizeSocialLinks(contact),
 });
 
+const formControlClassName =
+  "w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none transition focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-white disabled:text-slate-500 disabled:focus:ring-0";
+
 const buildContactMeta = (contact) => ({
   firstName: contact?.firstName || "",
   lastName: contact?.lastName || "",
@@ -145,6 +148,7 @@ const buildContactMeta = (contact) => ({
 
 const ContactDetail = () => {
   const { id } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
 
   const [contact, setContact] = useState(null);
@@ -157,6 +161,7 @@ const ContactDetail = () => {
   const [saveMessage, setSaveMessage] = useState("");
   const [photoFile, setPhotoFile] = useState(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
+  const [isEditing, setIsEditing] = useState(Boolean(location.state?.startEdit));
 
   useEffect(
     () => () => {
@@ -215,6 +220,10 @@ const ContactDetail = () => {
   useEffect(() => {
     fetchContact();
   }, [id]);
+
+  useEffect(() => {
+    setIsEditing(Boolean(location.state?.startEdit));
+  }, [id, location.key, location.state?.startEdit]);
 
   const navigateToContacts = () => {
     navigate("/contacts", {
@@ -357,6 +366,7 @@ const ContactDetail = () => {
         resetSelectedPhoto();
       }
 
+      setIsEditing(false);
       setSaveMessage("Contact updated successfully.");
     } catch (requestError) {
       setSaveError(
@@ -365,6 +375,28 @@ const ContactDetail = () => {
     } finally {
       setSaveLoading(false);
     }
+  };
+
+  const handlePrimaryAction = async (event) => {
+    event?.preventDefault?.();
+
+    if (!isEditing) {
+      setIsEditing(true);
+      setSaveError("");
+      setSaveMessage("");
+      return;
+    }
+
+    await handleUpdate();
+  };
+
+  const handleResetForm = () => {
+    if (!contact) return;
+
+    setFormData(toFormData(contact));
+    resetSelectedPhoto();
+    setSaveError("");
+    setSaveMessage("");
   };
 
   if (loading) {
@@ -421,6 +453,8 @@ const ContactDetail = () => {
 
   if (!contact || !formData) return null;
 
+  const isReadOnly = !isEditing;
+
   return (
     <div className="min-h-screen bg-slate-50">
       <ToastMessage
@@ -432,32 +466,41 @@ const ContactDetail = () => {
         }}
       />
 
-      <div className="container mx-auto max-w-7xl px-4 py-8 space-y-6">
-        <div className="sticky top-20 z-20 flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-600/95 to-purple-600/95 px-4 py-3 shadow-lg backdrop-blur">
-          <Button
-            variant="outline"
-            onClick={navigateToContacts}
-            className="!border-blue-200 bg-purple-500 !text-white hover:!bg-gradient-to-r hover:!border-blue-100 hover:!to-blue-600 hover:!from-purple-600 hover:!text-white"
-          >
-            Back to Contacts
-          </Button>
-          <Button
-            variant="primary"
-            onClick={handleUpdate}
-            loading={saveLoading}
-            className="!border-blue-200 border-2 bg-blue-500 !text-white hover:!bg-gradient-to-r hover:!to-blue-600 hover:!from-purple-600"
-          >
-            Update Information
-          </Button>
-        </div>
+      <form onSubmit={handlePrimaryAction}>
+        <div className="container mx-auto max-w-7xl space-y-6 px-4 py-8 pb-28">
+          <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 p-5 text-white shadow-lg md:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-100">
+                  Contact Overview
+                </p>
+                <h1 className="mt-1 text-2xl font-bold md:text-3xl">
+                  Contact Detail
+                </h1>
+                <p className="mt-2 text-sm text-blue-100 md:text-base">
+                  {isReadOnly
+                    ? "Review this contact in read-only mode, then use Update Information to make changes."
+                    : "Edit this contact and save your changes using the same layout as the create page."}
+                </p>
+              </div>
 
-        <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6">
-          <h2 className="text-xl font-semibold text-slate-800 mb-4">
-            Basic Information
-          </h2>
-          <div className="grid grid-cols-3 gap-4 items-start">
-            <div className="md:col-span-1">
-              <div className="mb-4">
+              <Button
+                type="button"
+                variant="primary"
+                onClick={navigateToContacts}
+                className="bg-white !text-blue-700 hover:!bg-blue-50"
+              >
+                Back to Contacts
+              </Button>
+            </div>
+          </section>
+
+          <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6">
+            <h2 className="text-xl font-semibold text-slate-800 mb-4">
+              Basic Information
+            </h2>
+            <div className="grid items-start gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
+              <div>
                 <ContactPhotoPicker
                   imageUrl={photoPreviewUrl || formData.photoUrl}
                   displayName={formData.displayName}
@@ -466,368 +509,433 @@ const ContactDetail = () => {
                   onFileChange={handlePhotoChange}
                   onRemove={handleRemovePhoto}
                   actionsLayout="split"
+                  disabled={isReadOnly}
                 />
               </div>
-            </div>
 
-            <div className="grid col-span-2 md:grid-cols-2 gap-4">
-              <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                placeholder="Display Name"
-                value={formData.displayName}
-                onChange={(e) => updateField("displayName", e.target.value)}
-              />
-              <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                placeholder="Nickname"
-                value={formData.nickname}
-                onChange={(e) => updateField("nickname", e.target.value)}
-              />
-              <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                placeholder="Company"
-                value={formData.company}
-                onChange={(e) => updateField("company", e.target.value)}
-              />
-              <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                placeholder="Job Title"
-                value={formData.jobTitle}
-                onChange={(e) => updateField("jobTitle", e.target.value)}
-              />
-              <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                placeholder="Department"
-                value={formData.department}
-                onChange={(e) => updateField("department", e.target.value)}
-              />
-              <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                placeholder="Website"
-                value={formData.website}
-                onChange={(e) => updateField("website", e.target.value)}
-              />
+              <div className="grid gap-4 md:grid-cols-2">
+                <input
+                  className={formControlClassName}
+                  placeholder="Display Name"
+                  value={formData.displayName}
+                  onChange={(e) => updateField("displayName", e.target.value)}
+                  disabled={isReadOnly}
+                />
+                <input
+                  className={formControlClassName}
+                  placeholder="Nickname"
+                  value={formData.nickname}
+                  onChange={(e) => updateField("nickname", e.target.value)}
+                  disabled={isReadOnly}
+                />
+                <input
+                  className={formControlClassName}
+                  placeholder="Company"
+                  value={formData.company}
+                  onChange={(e) => updateField("company", e.target.value)}
+                  disabled={isReadOnly}
+                />
+                <input
+                  className={formControlClassName}
+                  placeholder="Job Title"
+                  value={formData.jobTitle}
+                  onChange={(e) => updateField("jobTitle", e.target.value)}
+                  disabled={isReadOnly}
+                />
+                <input
+                  className={formControlClassName}
+                  placeholder="Department"
+                  value={formData.department}
+                  onChange={(e) => updateField("department", e.target.value)}
+                  disabled={isReadOnly}
+                />
+                <input
+                  className={formControlClassName}
+                  placeholder="Website"
+                  value={formData.website}
+                  onChange={(e) => updateField("website", e.target.value)}
+                  disabled={isReadOnly}
+                />
 
-              <input
-                type="date"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                value={formData.birthday}
-                onChange={(e) => updateField("birthday", e.target.value)}
-              />
-              <input
-                className="w-full rounded-lg border border-slate-300 px-3 py-2"
-                placeholder="Source"
-                value={formData.source}
-                onChange={(e) => updateField("source", e.target.value)}
-              />
-              <FavoriteToggle
-                checked={formData.favorite}
-                onChange={(value) => updateField("favorite", value)}
-              />
+                <input
+                  type="date"
+                  className={formControlClassName}
+                  value={formData.birthday}
+                  onChange={(e) => updateField("birthday", e.target.value)}
+                  disabled={isReadOnly}
+                />
+                <input
+                  className={formControlClassName}
+                  placeholder="Source"
+                  value={formData.source}
+                  onChange={(e) => updateField("source", e.target.value)}
+                  disabled={isReadOnly}
+                />
+                <div className="md:col-span-2">
+                  <FavoriteToggle
+                    checked={formData.favorite}
+                    onChange={(value) => updateField("favorite", value)}
+                    disabled={isReadOnly}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-        <div className="grid md:grid-cols-2 gap-4">
-          <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-800">
-                Phone Numbers
-              </h2>
-              <Button
-                variant="outline"
-                onClick={() => addListItem("phones", createPhone)}
-              >
-                + Add
-              </Button>
-            </div>
-            <ScrollableRecordList>
-              {formData.phones.map((item, index) => (
-                <div
-                  key={`phone-${index}`}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+          <div className="grid md:grid-cols-2 gap-4">
+            <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-slate-800">
+                  Phone Numbers
+                </h2>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => addListItem("phones", createPhone)}
+                  disabled={isReadOnly}
                 >
-                  <div className="grid md:grid-cols-12 gap-2 items-center">
-                    <input
-                      className="md:col-span-3 rounded-lg border border-slate-300 px-3 py-2"
-                      placeholder="Label"
-                      value={item.label}
-                      onChange={(e) =>
-                        updateListField(
-                          "phones",
-                          index,
-                          "label",
-                          e.target.value,
-                        )
-                      }
-                    />
-                    <input
-                      className="md:col-span-5 rounded-lg border border-slate-300 px-3 py-2"
-                      placeholder="Phone"
-                      value={item.value}
-                      onChange={(e) =>
-                        updateListField(
-                          "phones",
-                          index,
-                          "value",
-                          e.target.value,
-                        )
-                      }
-                    />
-                    <label className="md:col-span-2 text-sm text-slate-700 flex items-center gap-2">
+                  + Add
+                </Button>
+              </div>
+              <ScrollableRecordList>
+                {formData.phones.map((item, index) => (
+                  <div
+                    key={`phone-${index}`}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                  >
+                    <div className="grid md:grid-cols-12 gap-2 items-center">
                       <input
-                        type="checkbox"
-                        checked={item.isPrimary}
-                        aria-label="Set as primary phone"
-                        title="Set as primary phone"
+                        className={`md:col-span-3 ${formControlClassName}`}
+                        placeholder="Label"
+                        value={item.label}
                         onChange={(e) =>
                           updateListField(
                             "phones",
                             index,
-                            "isPrimary",
-                            e.target.checked,
+                            "label",
+                            e.target.value,
                           )
                         }
+                        disabled={isReadOnly}
                       />
-                    </label>
-                    <Button
-                      variant="danger"
-                      onClick={() => removeListItem("phones", index)}
-                      className="md:col-span-2 justify-self-end"
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </ScrollableRecordList>
-          </section>
-
-          <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-800">Emails</h2>
-              <Button
-                variant="outline"
-                onClick={() => addListItem("emails", createEmail)}
-              >
-                + Add
-              </Button>
-            </div>
-            <ScrollableRecordList>
-              {formData.emails.map((item, index) => (
-                <div
-                  key={`email-${index}`}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-                >
-                  <div className="grid md:grid-cols-12 gap-2 items-center">
-                    <input
-                      className="md:col-span-2 rounded-lg border border-slate-300 px-3 py-2"
-                      placeholder="Label"
-                      value={item.label}
-                      onChange={(e) =>
-                        updateListField(
-                          "emails",
-                          index,
-                          "label",
-                          e.target.value,
-                        )
-                      }
-                    />
-                    <input
-                      className="md:col-span-6 rounded-lg border border-slate-300 px-3 py-2"
-                      placeholder="Email"
-                      value={item.value}
-                      onChange={(e) =>
-                        updateListField(
-                          "emails",
-                          index,
-                          "value",
-                          e.target.value,
-                        )
-                      }
-                    />
-                    <label className="md:col-span-2 text-sm text-slate-700 flex items-center gap-2">
                       <input
-                        type="checkbox"
-                        checked={item.isPrimary}
-                        aria-label="Set as primary email"
-                        title="Set as primary email"
+                        className={`md:col-span-5 ${formControlClassName}`}
+                        placeholder="Phone"
+                        value={item.value}
+                        onChange={(e) =>
+                          updateListField(
+                            "phones",
+                            index,
+                            "value",
+                            e.target.value,
+                          )
+                        }
+                        disabled={isReadOnly}
+                      />
+                      <label className="md:col-span-2 text-sm text-slate-700 flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={item.isPrimary}
+                          aria-label="Set as primary phone"
+                          title="Set as primary phone"
+                          onChange={(e) =>
+                            updateListField(
+                              "phones",
+                              index,
+                              "isPrimary",
+                              e.target.checked,
+                            )
+                          }
+                          disabled={isReadOnly}
+                        />
+                        Primary
+                      </label>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        onClick={() => removeListItem("phones", index)}
+                        className="md:col-span-2 justify-self-end"
+                        disabled={isReadOnly}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </ScrollableRecordList>
+            </section>
+
+            <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-slate-800">Emails</h2>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => addListItem("emails", createEmail)}
+                  disabled={isReadOnly}
+                >
+                  + Add
+                </Button>
+              </div>
+              <ScrollableRecordList>
+                {formData.emails.map((item, index) => (
+                  <div
+                    key={`email-${index}`}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                  >
+                    <div className="grid md:grid-cols-12 gap-2 items-center">
+                      <input
+                        className={`md:col-span-2 ${formControlClassName}`}
+                        placeholder="Label"
+                        value={item.label}
                         onChange={(e) =>
                           updateListField(
                             "emails",
                             index,
-                            "isPrimary",
-                            e.target.checked,
+                            "label",
+                            e.target.value,
                           )
                         }
+                        disabled={isReadOnly}
                       />
-                    </label>
-                    <Button
-                      variant="danger"
-                      onClick={() => removeListItem("emails", index)}
-                      className="md:col-span-2 justify-self-end"
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </ScrollableRecordList>
-          </section>
-        </div>
-        <div className="grid md:grid-cols-2 gap-4">
-          <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-800">
-                Addresses
-              </h2>
-              <Button
-                variant="outline"
-                onClick={() => addListItem("addresses", createAddress)}
-              >
-                + Add
-              </Button>
-            </div>
-            <ScrollableRecordList maxHeightClass="max-h-[27rem]">
-              {formData.addresses.map((item, index) => (
-                <div
-                  key={`address-${index}`}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                >
-                  <div className="flex gap-2">
-                    <div className="md:col-span-3 font-semibold text-slate-700">
-                      Address {index + 1}
+                      <input
+                        className={`md:col-span-6 ${formControlClassName}`}
+                        placeholder="Email"
+                        value={item.value}
+                        onChange={(e) =>
+                          updateListField(
+                            "emails",
+                            index,
+                            "value",
+                            e.target.value,
+                          )
+                        }
+                        disabled={isReadOnly}
+                      />
+                      <label className="md:col-span-2 text-sm text-slate-700 flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={item.isPrimary}
+                          aria-label="Set as primary email"
+                          title="Set as primary email"
+                          onChange={(e) =>
+                            updateListField(
+                              "emails",
+                              index,
+                              "isPrimary",
+                              e.target.checked,
+                            )
+                          }
+                          disabled={isReadOnly}
+                        />
+                        Primary
+                      </label>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        onClick={() => removeListItem("emails", index)}
+                        className="md:col-span-2 justify-self-end"
+                        disabled={isReadOnly}
+                      >
+                        Remove
+                      </Button>
                     </div>
-                    <Button
-                      variant="danger"
-                      onClick={() => removeListItem("addresses", index)}
-                    >
-                      Remove
-                    </Button>
                   </div>
-                  <div className="grid md:grid-cols-12 gap-2 py-2">
-                    <input
-                      className="md:col-span-3 rounded-lg border border-slate-300 px-3 py-2"
-                      placeholder="Label"
-                      value={item.label}
-                      onChange={(e) =>
-                        updateListField(
-                          "addresses",
-                          index,
-                          "label",
-                          e.target.value,
-                        )
-                      }
-                    />
-                    <input
-                      className="md:col-span-6 rounded-lg border border-slate-300 px-3 py-2"
-                      placeholder="Full Address"
-                      value={item.fullAddress}
-                      onChange={(e) =>
-                        updateListField(
-                          "addresses",
-                          index,
-                          "fullAddress",
-                          e.target.value,
-                        )
-                      }
-                    />
-                    <input
-                      className="md:col-span-3 rounded-lg border border-slate-300 px-3 py-2"
-                      placeholder="Postal Code"
-                      value={item.postalCode}
-                      onChange={(e) =>
-                        updateListField(
-                          "addresses",
-                          index,
-                          "postalCode",
-                          e.target.value,
-                        )
-                      }
-                    />
+                ))}
+              </ScrollableRecordList>
+            </section>
+          </div>
+          <div className="grid md:grid-cols-2 gap-4">
+            <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-slate-800">
+                  Addresses
+                </h2>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => addListItem("addresses", createAddress)}
+                  disabled={isReadOnly}
+                >
+                  + Add
+                </Button>
+              </div>
+              <ScrollableRecordList maxHeightClass="max-h-[27rem]">
+                {formData.addresses.map((item, index) => (
+                  <div
+                    key={`address-${index}`}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+                  >
+                    <div className="flex gap-2">
+                      <div className="md:col-span-3 font-semibold text-slate-700">
+                        Address {index + 1}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        onClick={() => removeListItem("addresses", index)}
+                        disabled={isReadOnly}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                    <div className="grid md:grid-cols-12 gap-2 py-2">
+                      <input
+                        className={`md:col-span-3 ${formControlClassName}`}
+                        placeholder="Label"
+                        value={item.label}
+                        onChange={(e) =>
+                          updateListField(
+                            "addresses",
+                            index,
+                            "label",
+                            e.target.value,
+                          )
+                        }
+                        disabled={isReadOnly}
+                      />
+                      <input
+                        className={`md:col-span-6 ${formControlClassName}`}
+                        placeholder="Full Address"
+                        value={item.fullAddress}
+                        onChange={(e) =>
+                          updateListField(
+                            "addresses",
+                            index,
+                            "fullAddress",
+                            e.target.value,
+                          )
+                        }
+                        disabled={isReadOnly}
+                      />
+                      <input
+                        className={`md:col-span-3 ${formControlClassName}`}
+                        placeholder="Postal Code"
+                        value={item.postalCode}
+                        onChange={(e) =>
+                          updateListField(
+                            "addresses",
+                            index,
+                            "postalCode",
+                            e.target.value,
+                          )
+                        }
+                        disabled={isReadOnly}
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
-            </ScrollableRecordList>
-          </section>
+                ))}
+              </ScrollableRecordList>
+            </section>
+
+            <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-slate-800">
+                  Social Links
+                </h2>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => addListItem("socialLinks", createSocial)}
+                  disabled={isReadOnly}
+                >
+                  + Add
+                </Button>
+              </div>
+              <ScrollableRecordList>
+                {formData.socialLinks.map((item, index) => (
+                  <div
+                    key={`social-${index}`}
+                    className="rounded-xl border border-slate-200 bg-slate-50 p-3"
+                  >
+                    <div className="grid md:grid-cols-12 gap-2 items-center">
+                      <input
+                        className={`md:col-span-4 ${formControlClassName}`}
+                        placeholder="Platform"
+                        value={item.platform}
+                        onChange={(e) =>
+                          updateListField(
+                            "socialLinks",
+                            index,
+                            "platform",
+                            e.target.value,
+                          )
+                        }
+                        disabled={isReadOnly}
+                      />
+                      <input
+                        className={`md:col-span-7 ${formControlClassName}`}
+                        placeholder="URL"
+                        value={item.url}
+                        onChange={(e) =>
+                          updateListField(
+                            "socialLinks",
+                            index,
+                            "url",
+                            e.target.value,
+                          )
+                        }
+                        disabled={isReadOnly}
+                      />
+                      <Button
+                        type="button"
+                        variant="danger"
+                        onClick={() => removeListItem("socialLinks", index)}
+                        disabled={isReadOnly}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </ScrollableRecordList>
+            </section>
+          </div>
 
           <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-slate-800">
-                Social Links
-              </h2>
-              <Button
-                variant="outline"
-                onClick={() => addListItem("socialLinks", createSocial)}
-              >
-                + Add
-              </Button>
-            </div>
-            <ScrollableRecordList>
-              {formData.socialLinks.map((item, index) => (
-                <div
-                  key={`social-${index}`}
-                  className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-                >
-                  <div className="grid md:grid-cols-12 gap-2 items-center">
-                    <input
-                      className="md:col-span-4 rounded-lg border border-slate-300 px-3 py-2"
-                      placeholder="Platform"
-                      value={item.platform}
-                      onChange={(e) =>
-                        updateListField(
-                          "socialLinks",
-                          index,
-                          "platform",
-                          e.target.value,
-                        )
-                      }
-                    />
-                    <input
-                      className="md:col-span-7 rounded-lg border border-slate-300 px-3 py-2"
-                      placeholder="URL"
-                      value={item.url}
-                      onChange={(e) =>
-                        updateListField(
-                          "socialLinks",
-                          index,
-                          "url",
-                          e.target.value,
-                        )
-                      }
-                    />
-                    <Button
-                      variant="danger"
-                      onClick={() => removeListItem("socialLinks", index)}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </ScrollableRecordList>
+            <h2 className="text-xl font-semibold text-slate-800">
+              Notes and Tags
+            </h2>
+            <input
+              className={formControlClassName}
+              placeholder="Tags (comma separated)"
+              value={formData.tagsText}
+              onChange={(e) => updateField("tagsText", e.target.value)}
+              disabled={isReadOnly}
+            />
+            <textarea
+              rows={5}
+              className={formControlClassName}
+              placeholder="Notes"
+              value={formData.notes}
+              onChange={(e) => updateField("notes", e.target.value)}
+              disabled={isReadOnly}
+            />
           </section>
         </div>
 
-        <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 space-y-4">
-          <h2 className="text-xl font-semibold text-slate-800">
-            Notes and Tags
-          </h2>
-          <input
-            className="w-full rounded-lg border border-slate-300 px-3 py-2"
-            placeholder="Tags (comma separated)"
-            value={formData.tagsText}
-            onChange={(e) => updateField("tagsText", e.target.value)}
-          />
-          <textarea
-            rows={5}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2"
-            placeholder="Notes"
-            value={formData.notes}
-            onChange={(e) => updateField("notes", e.target.value)}
-          />
-        </section>
-      </div>
+        <div className="fixed inset-x-0 bottom-0 z-30 px-4 pb-4">
+          <div className="container mx-auto flex max-w-7xl items-center justify-between gap-3 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-600/95 to-purple-600/95 px-4 py-3 shadow-lg backdrop-blur">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleResetForm}
+              disabled={isReadOnly}
+              className="border-white/40 bg-white/10 !text-white hover:!border-white hover:!bg-white/20"
+            >
+              Reset
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={saveLoading}
+              className="bg-white !text-blue-700 hover:!bg-blue-50"
+            >
+              {isEditing ? "Save" : "Update Information"}
+            </Button>
+          </div>
+        </div>
+      </form>
     </div>
   );
 };

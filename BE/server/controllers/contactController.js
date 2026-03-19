@@ -88,10 +88,20 @@ const createContact = async (req, res) => {
     });
   } catch (error) {
     if (error instanceof ContactServiceError) {
-      return res.status(error.statusCode).json({
+      const payload = {
         success: false,
         message: error.message,
-      });
+      };
+
+      if (error.errors) {
+        payload.errors = error.errors;
+      }
+
+      if (error.fieldErrors) {
+        payload.fieldErrors = error.fieldErrors;
+      }
+
+      return res.status(error.statusCode).json(payload);
     }
 
     return res.status(500).json({
@@ -136,10 +146,20 @@ const deleteContact = async (req, res) => {
     });
   } catch (error) {
     if (error instanceof ContactServiceError) {
-      return res.status(error.statusCode).json({
+      const payload = {
         success: false,
         message: error.message,
-      });
+      };
+
+      if (error.errors) {
+        payload.errors = error.errors;
+      }
+
+      if (error.fieldErrors) {
+        payload.fieldErrors = error.fieldErrors;
+      }
+
+      return res.status(error.statusCode).json(payload);
     }
 
     return res.status(500).json({
@@ -163,10 +183,20 @@ const deleteManyContacts = async (req, res) => {
     });
   } catch (error) {
     if (error instanceof ContactServiceError) {
-      return res.status(error.statusCode).json({
+      const payload = {
         success: false,
         message: error.message,
-      });
+      };
+
+      if (error.errors) {
+        payload.errors = error.errors;
+      }
+
+      if (error.fieldErrors) {
+        payload.fieldErrors = error.fieldErrors;
+      }
+
+      return res.status(error.statusCode).json(payload);
     }
 
     return res.status(500).json({

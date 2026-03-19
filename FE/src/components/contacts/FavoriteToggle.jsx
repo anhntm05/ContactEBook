@@ -1,15 +1,21 @@
-const FavoriteToggle = ({ checked, onChange }) => (
+const FavoriteToggle = ({ checked, onChange, disabled = false }) => (
   <label
-    className={`group flex cursor-pointer items-center justify-between gap-4 rounded-xl border px-4 py-3 transition ${
+    className={`group flex items-center justify-between gap-4 rounded-xl border px-4 py-3 transition ${
       checked
         ? "border-purple-500 bg-purple-500 shadow-sm"
-        : "border-slate-300 bg-white hover:border-purple-300 hover:bg-purple-50"
+        : "border-slate-300 bg-white"
+    } ${
+      disabled
+        ? "cursor-not-allowed opacity-70"
+        : "cursor-pointer hover:border-purple-300 hover:bg-purple-50"
     }`}
   >
     <div className="space-y-1">
       <div
         className={`text-sm font-semibold ${
-          checked ? "text-white" : "text-slate-800 group-hover:text-purple-700"
+          checked
+            ? "text-white"
+            : `text-slate-800 ${disabled ? "" : "group-hover:text-purple-700"}`
         }`}
       >
         Favorite
@@ -18,7 +24,7 @@ const FavoriteToggle = ({ checked, onChange }) => (
         className={`text-xs ${
           checked
             ? "text-purple-100"
-            : "text-slate-500 group-hover:text-purple-600"
+            : `text-slate-500 ${disabled ? "" : "group-hover:text-purple-600"}`
         }`}
       >
         Highlight this contact for faster access.
@@ -29,6 +35,7 @@ const FavoriteToggle = ({ checked, onChange }) => (
         type="checkbox"
         className="peer sr-only"
         checked={checked}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.checked)}
       />
       <div

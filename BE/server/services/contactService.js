@@ -32,10 +32,11 @@ const CONTACT_LIST_PROJECTION = [
 ].join(" ");
 
 export class ContactServiceError extends Error {
-  constructor(statusCode, message) {
+  constructor(statusCode, message, details = {}) {
     super(message);
     this.name = "ContactServiceError";
     this.statusCode = statusCode;
+    Object.assign(this, details);
   }
 }
 
@@ -187,6 +188,9 @@ const requireAuthUserId = (req) => {
 const normalizeString = (value, fallback = "") =>
   `${value ?? fallback}`.trim();
 
+const normalizePhoneForComparison = (value = "") =>
+  normalizeString(value, "").replace(/\D/g, "");
+
 const buildLegacyFullAddress = (address = {}) =>
   [
     normalizeString(address?.street, ""),
@@ -240,6 +244,127 @@ const normalizeTagsPayload = (tags = []) =>
   (Array.isArray(tags) ? tags : [])
     .map((tag) => normalizeString(tag, ""))
     .filter(Boolean);
+
+const collectDuplicateValues = (values = []) => {
+  const seen = new Set();
+  const duplicates = new Set();
+
+  values.forEach((value) => {
+    if (!value) return;
+    if (seen.has(value)) {
+      duplicates.add(value);
+      return;
+    }
+    seen.add(value);
+  });
+
+  return duplicates;
+};
+
+const buildDuplicateContactMethodError = ({ duplicatePhones, duplicateEmails }) => {
+  const fieldErrors = {};
+  const errors = [];
+
+  if (duplicatePhones.length > 0) {
+    fieldErrors.phone = `Phone number already exists in ${duplicatePhones
+      .map((contact) => `"${contact.displayName}"`)
+      .join(", ")}.`;
+    errors.push(fieldErrors.phone);
+  }
+
+  if (duplicateEmails.length > 0) {
+    fieldErrors.email = `Email address already exists in ${duplicateEmails
+      .map((contact) => `"${contact.displayName}"`)
+      .join(", ")}.`;
+    errors.push(fieldErrors.email);
+  }
+
+  return new ContactServiceError(409, "Duplicate contact methods found.", {
+    fieldErrors,
+    errors,
+  });
+};
+
+const assertUniqueContactMethodsForCreate = async ({ createdBy, phones = [], emails = [] }) => {
+  const normalizedPhones = phones
+    .map((phone) => ({
+      rawValue: normalizeString(phone?.value || phone?.number, ""),
+      compareValue: normalizePhoneForComparison(phone?.value || phone?.number),
+    }))
+    .filter((phone) => phone.compareValue);
+
+  const normalizedEmails = emails
+    .map((email) => normalizeString(email?.value || email?.email, "").toLowerCase())
+    .filter(Boolean);
+
+  const duplicatePhonesInPayload = collectDuplicateValues(
+    normalizedPhones.map((phone) => phone.compareValue)
+  );
+  const duplicateEmailsInPayload = collectDuplicateValues(normalizedEmails);
+
+  if (duplicatePhonesInPayload.size > 0 || duplicateEmailsInPayload.size > 0) {
+    const fieldErrors = {};
+    const errors = [];
+
+    if (duplicatePhonesInPayload.size > 0) {
+      fieldErrors.phone = "Duplicate phone numbers are not allowed.";
+      errors.push(fieldErrors.phone);
+    }
+
+    if (duplicateEmailsInPayload.size > 0) {
+      fieldErrors.email = "Duplicate email addresses are not allowed.";
+      errors.push(fieldErrors.email);
+    }
+
+    throw new ContactServiceError(400, "Validation failed", {
+      fieldErrors,
+      errors,
+    });
+  }
+
+  if (normalizedPhones.length === 0 && normalizedEmails.length === 0) {
+    return;
+  }
+
+  const existingContacts = await Contact.find({
+    createdBy,
+    deletedAt: null,
+  })
+    .select("displayName phones.value emails.value")
+    .lean();
+
+  const requestedPhoneSet = new Set(normalizedPhones.map((phone) => phone.compareValue));
+  const requestedEmailSet = new Set(normalizedEmails);
+  const duplicatePhones = [];
+  const duplicateEmails = [];
+
+  existingContacts.forEach((contact) => {
+    const contactName = normalizeString(contact?.displayName, "another contact");
+
+    const hasDuplicatePhone = (Array.isArray(contact?.phones) ? contact.phones : []).some((phone) =>
+      requestedPhoneSet.has(normalizePhoneForComparison(phone?.value))
+    );
+
+    const hasDuplicateEmail = (Array.isArray(contact?.emails) ? contact.emails : []).some((email) =>
+      requestedEmailSet.has(normalizeString(email?.value, "").toLowerCase())
+    );
+
+    if (hasDuplicatePhone) {
+      duplicatePhones.push({ displayName: contactName });
+    }
+
+    if (hasDuplicateEmail) {
+      duplicateEmails.push({ displayName: contactName });
+    }
+  });
+
+  if (duplicatePhones.length > 0 || duplicateEmails.length > 0) {
+    throw buildDuplicateContactMethodError({
+      duplicatePhones,
+      duplicateEmails,
+    });
+  }
+};
 
 export const getContactsService = async (req) => {
   const createdBy = requireAuthUserId(req);
@@ -326,6 +451,12 @@ export const createContactService = async (req) => {
     if (uploadedPhotoUrl) {
       contactData.photoUrl = uploadedPhotoUrl;
     }
+
+    await assertUniqueContactMethodsForCreate({
+      createdBy,
+      phones: contactData.phones,
+      emails: contactData.emails,
+    });
 
     createdContact = await Contact.create(contactData);
     return toDetailItem(req, createdContact.toObject());
