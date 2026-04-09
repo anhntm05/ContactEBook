@@ -59,7 +59,7 @@ const Register = () => {
     setLoading(false);
 
     if (result.success) {
-      navigate("/dashboard");
+      navigate("/contacts");
     } else {
       setErrors({ general: result.error });
       console.error("Registration error:", result.error);

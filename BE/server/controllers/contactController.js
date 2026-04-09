@@ -1,6 +1,8 @@
 import {
   ContactServiceError,
   createContactService,
+  deleteContactService,
+  deleteManyContactsService,
   getContactByIdService,
   getContactsService,
   searchContactsService,
@@ -86,10 +88,20 @@ const createContact = async (req, res) => {
     });
   } catch (error) {
     if (error instanceof ContactServiceError) {
-      return res.status(error.statusCode).json({
+      const payload = {
         success: false,
         message: error.message,
-      });
+      };
+
+      if (error.errors) {
+        payload.errors = error.errors;
+      }
+
+      if (error.fieldErrors) {
+        payload.fieldErrors = error.fieldErrors;
+      }
+
+      return res.status(error.statusCode).json(payload);
     }
 
     return res.status(500).json({
@@ -124,4 +136,83 @@ const updateContact = async (req, res) => {
   }
 };
 
-export { createContact, getContactById, getContacts, searchContacts, updateContact };
+const deleteContact = async (req, res) => {
+  try {
+    const result = await deleteContactService(req);
+    return res.status(200).json({
+      success: true,
+      message: "Contact deleted successfully",
+      data: result,
+    });
+  } catch (error) {
+    if (error instanceof ContactServiceError) {
+      const payload = {
+        success: false,
+        message: error.message,
+      };
+
+      if (error.errors) {
+        payload.errors = error.errors;
+      }
+
+      if (error.fieldErrors) {
+        payload.fieldErrors = error.fieldErrors;
+      }
+
+      return res.status(error.statusCode).json(payload);
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete contact",
+      error: error.message,
+    });
+  }
+};
+
+const deleteManyContacts = async (req, res) => {
+  try {
+    const result = await deleteManyContactsService(req);
+    return res.status(200).json({
+      success: true,
+      message:
+        result.deletedCount > 1
+          ? "Contacts deleted successfully"
+          : "Contact deleted successfully",
+      data: result,
+    });
+  } catch (error) {
+    if (error instanceof ContactServiceError) {
+      const payload = {
+        success: false,
+        message: error.message,
+      };
+
+      if (error.errors) {
+        payload.errors = error.errors;
+      }
+
+      if (error.fieldErrors) {
+        payload.fieldErrors = error.fieldErrors;
+      }
+
+      return res.status(error.statusCode).json(payload);
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete contacts",
+      error: error.message,
+    });
+  }
+};
+
+export {
+  createContact,
+  deleteContact,
+  deleteManyContacts,
+  getContactById,
+  getContacts,
+  searchContacts,
+  updateContact,
+};

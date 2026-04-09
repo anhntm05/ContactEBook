@@ -24,10 +24,22 @@ const ContactRowActions = ({ contact, onDelete, onToggleFavorite }) => {
 
   return (
     <div className="relative flex items-center justify-end gap-2">
-      <Button variant="outline" onClick={() => navigate(`/contacts/${contactId}`)} className="px-3 py-1 text-sm">
+      <Button
+        variant="outline"
+        onClick={() => navigate(`/contacts/${contactId}`)}
+        className="px-3 py-1 text-sm"
+      >
         View
       </Button>
-      <Button variant="outline" onClick={() => navigate(`/contacts/${contactId}`)} className="px-3 py-1 text-sm">
+      <Button
+        variant="outline"
+        onClick={() =>
+          navigate(`/contacts/${contactId}`, {
+            state: { startEdit: true },
+          })
+        }
+        className="px-3 py-1 text-sm"
+      >
         Edit
       </Button>
       <Button variant="danger" onClick={() => onDelete(contactId)} className="px-3 py-1 text-sm">

@@ -1,9 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Input from "../components/common/Input";
+import ContactPhotoPicker from "../components/contacts/ContactPhotoPicker";
+import FavoriteToggle from "../components/contacts/FavoriteToggle";
 import Button from "../components/common/Button";
+import ToastMessage from "../components/common/ToastMessage";
 import api from "../utils/api";
 import { upsertContactMeta } from "../utils/contactMeta";
+import {
+  buildContactUploadFormData,
+  validateContactPhotoFile,
+} from "../utils/contactMedia";
 
 const initialFormData = {
   displayName: "",
@@ -16,25 +22,12 @@ const initialFormData = {
   email: "",
   emailLabel: "personal",
   website: "",
-  photoUrl: "",
+  tagsText: "",
   notes: "",
   favorite: false,
 };
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 const isBlank = (value) => !value || !value.trim();
-
-const isValidHttpUrl = (value) => {
-  if (isBlank(value)) return true;
-
-  try {
-    const parsed = new URL(value.trim());
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-};
 
 const normalizeServerErrors = (error) => {
   const responseData = error?.response?.data;
@@ -50,6 +43,11 @@ const normalizeServerErrors = (error) => {
   );
 };
 
+const getServerFieldErrors = (error) => {
+  const fieldErrors = error?.response?.data?.fieldErrors;
+  return fieldErrors && typeof fieldErrors === "object" ? fieldErrors : {};
+};
+
 const buildPayload = (formData) => {
   const payload = {
     displayName: formData.displayName.trim(),
@@ -62,7 +60,6 @@ const buildPayload = (formData) => {
     "company",
     "jobTitle",
     "website",
-    "photoUrl",
     "notes",
   ];
 
@@ -71,6 +68,15 @@ const buildPayload = (formData) => {
       payload[field] = formData[field].trim();
     }
   });
+
+  const tags = formData.tagsText
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+
+  if (tags.length > 0) {
+    payload.tags = tags;
+  }
 
   if (!isBlank(formData.phone)) {
     payload.phones = [
@@ -95,11 +101,27 @@ const buildPayload = (formData) => {
   return payload;
 };
 
+const inputClassName = (error) =>
+  `w-full rounded-lg border px-3 py-2 text-slate-800 outline-none transition focus:ring-2 focus:ring-blue-200 ${
+    error ? "border-red-400" : "border-slate-300"
+  }`;
+
 const CreateContact = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState(initialFormData);
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState("");
+
+  useEffect(
+    () => () => {
+      if (photoPreviewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(photoPreviewUrl);
+      }
+    },
+    [photoPreviewUrl],
+  );
 
   const contactMethodHint = useMemo(() => {
     if (!isBlank(formData.phone) || !isBlank(formData.email)) {
@@ -124,6 +146,56 @@ const CreateContact = () => {
     }));
   };
 
+  const setPreviewFromFile = (file) => {
+    setPhotoPreviewUrl((prev) => {
+      if (prev.startsWith("blob:")) {
+        URL.revokeObjectURL(prev);
+      }
+      return file ? URL.createObjectURL(file) : "";
+    });
+  };
+
+  const handlePhotoChange = (event) => {
+    const file = event.target.files?.[0] || null;
+    const photoError = validateContactPhotoFile(file);
+
+    if (photoError) {
+      setErrors((prev) => ({
+        ...prev,
+        photo: photoError,
+        general: null,
+      }));
+      event.target.value = "";
+      return;
+    }
+
+    setPhotoFile(file);
+    setPreviewFromFile(file);
+    setErrors((prev) => ({
+      ...prev,
+      photo: null,
+      general: null,
+    }));
+    event.target.value = "";
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoFile(null);
+    setPreviewFromFile(null);
+    setErrors((prev) => ({
+      ...prev,
+      photo: null,
+      general: null,
+    }));
+  };
+
+  const handleResetForm = () => {
+    setFormData(initialFormData);
+    setErrors({});
+    setPhotoFile(null);
+    setPreviewFromFile(null);
+  };
+
   const validate = () => {
     const newErrors = {};
 
@@ -134,18 +206,6 @@ const CreateContact = () => {
     if (isBlank(formData.phone) && isBlank(formData.email)) {
       newErrors.phone = "Provide at least one phone number or one email";
       newErrors.email = "Provide at least one phone number or one email";
-    }
-
-    if (!isBlank(formData.email) && !EMAIL_REGEX.test(formData.email.trim())) {
-      newErrors.email = "Please enter a valid email address";
-    }
-
-    if (!isValidHttpUrl(formData.website)) {
-      newErrors.website = "Website must be a valid URL (http or https)";
-    }
-
-    if (!isValidHttpUrl(formData.photoUrl)) {
-      newErrors.photoUrl = "Photo URL must be a valid URL (http or https)";
     }
 
     return newErrors;
@@ -164,7 +224,12 @@ const CreateContact = () => {
 
     try {
       const payload = buildPayload(formData);
-      const response = await api.post("/contacts", payload);
+      const requestData = buildContactUploadFormData(payload, photoFile);
+      const response = await api.post("/contacts", requestData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
       const createdContact = response.data?.data || response.data;
       const contactId = createdContact?._id || createdContact?.id;
 
@@ -174,6 +239,10 @@ const CreateContact = () => {
           lastName: formData.lastName.trim(),
           company: formData.company.trim(),
           jobTitle: formData.jobTitle.trim(),
+          tags: formData.tagsText
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
           phoneNumbers: isBlank(formData.phone)
             ? []
             : [
@@ -195,152 +264,325 @@ const CreateContact = () => {
         });
       }
 
-      navigate("/dashboard", {
+      navigate("/contacts", {
         state: { successMessage: "Contact created successfully." },
       });
     } catch (error) {
-      setErrors({ general: normalizeServerErrors(error) });
+      const fieldErrors = getServerFieldErrors(error);
+
+      setErrors({
+        ...fieldErrors,
+        general:
+          Object.keys(fieldErrors).length > 0
+            ? null
+            : normalizeServerErrors(error),
+      });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-3xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-8">
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            Create Contact
-          </h1>
-          <p className="text-gray-600 mb-6">
-            Fill in the details below and click <strong>Save Contact</strong> to
-            create a new contact.
-          </p>
+    <div className="min-h-screen bg-slate-50">
+      <ToastMessage
+        message={errors.general}
+        type="error"
+        onClose={() =>
+          setErrors((prev) => ({
+            ...prev,
+            general: null,
+          }))
+        }
+      />
 
-          {errors.general && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-              {errors.general}
+      <form onSubmit={handleSubmit}>
+        <div className="container mx-auto max-w-7xl space-y-6 px-4 py-8 pb-28">
+          <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 p-5 text-white shadow-lg md:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-sm font-medium text-blue-100">
+                  Contact Overview
+                </p>
+                <h1 className="mt-1 text-2xl font-bold md:text-3xl">
+                  Create Contact
+                </h1>
+                <p className="mt-2 text-sm text-blue-100 md:text-base">
+                  Add a new contact using the same section layout as the contact
+                  detail page.
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => navigate("/contacts")}
+                className="bg-white !text-blue-700 hover:!bg-blue-50"
+              >
+                Back to Contacts
+              </Button>
             </div>
-          )}
+          </section>
 
-          <form onSubmit={handleSubmit}>
-            <div className="grid md:grid-cols-3 gap-4">
-              <Input
-                label="Display Name"
-                name="displayName"
-                value={formData.displayName}
-                onChange={handleChange}
-                placeholder="e.g. Jane Doe"
-                required
-                error={errors.displayName}
-              />
-
-              <Input
-                label="First Name"
-                name="firstName"
-                value={formData.firstName}
-                onChange={handleChange}
-                placeholder="Optional"
-              />
-              <Input
-                label="Last Name"
-                name="lastName"
-                value={formData.lastName}
-                onChange={handleChange}
-                placeholder="Optional"
-              />
-            </div>
-            <div className="grid md:grid-cols-3 gap-4">
-              <div className="md:col-span-2">
-                <Input
-                  label="Phone"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  placeholder="e.g. +1-555-0100"
-                  error={errors.phone}
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-4 text-xl font-semibold text-slate-800">
+              Basic Information
+            </h2>
+            <div className="grid items-start gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
+              <div>
+                <ContactPhotoPicker
+                  imageUrl={photoPreviewUrl}
+                  displayName={formData.displayName}
+                  fileName={photoFile?.name || ""}
+                  error={errors.photo}
+                  onFileChange={handlePhotoChange}
+                  onRemove={handleRemovePhoto}
+                  actionsLayout="split"
                 />
               </div>
-              <Input
-                label="Phone Label"
-                name="phoneLabel"
-                value={formData.phoneLabel}
-                onChange={handleChange}
-                placeholder="mobile"
-              />
-            </div>
 
-            <div className="grid md:grid-cols-3 gap-4">
-              <div className="md:col-span-2">
-                <Input
-                  label="Email"
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  placeholder="e.g. jane@example.com"
-                  error={errors.email}
-                />
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label
+                    className="block text-sm font-semibold text-slate-700"
+                    htmlFor="displayName"
+                  >
+                    Display Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="displayName"
+                    name="displayName"
+                    value={formData.displayName}
+                    onChange={handleChange}
+                    placeholder="e.g. Jane Doe"
+                    className={inputClassName(errors.displayName)}
+                  />
+                  {errors.displayName && (
+                    <p className="text-sm text-red-600">{errors.displayName}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    className="block text-sm font-semibold text-slate-700"
+                    htmlFor="firstName"
+                  >
+                    First Name
+                  </label>
+                  <input
+                    id="firstName"
+                    name="firstName"
+                    value={formData.firstName}
+                    onChange={handleChange}
+                    placeholder="Optional"
+                    className={inputClassName()}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    className="block text-sm font-semibold text-slate-700"
+                    htmlFor="lastName"
+                  >
+                    Last Name
+                  </label>
+                  <input
+                    id="lastName"
+                    name="lastName"
+                    value={formData.lastName}
+                    onChange={handleChange}
+                    placeholder="Optional"
+                    className={inputClassName()}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    className="block text-sm font-semibold text-slate-700"
+                    htmlFor="company"
+                  >
+                    Company
+                  </label>
+                  <input
+                    id="company"
+                    name="company"
+                    value={formData.company}
+                    onChange={handleChange}
+                    placeholder="Optional"
+                    className={inputClassName()}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    className="block text-sm font-semibold text-slate-700"
+                    htmlFor="jobTitle"
+                  >
+                    Job Title
+                  </label>
+                  <input
+                    id="jobTitle"
+                    name="jobTitle"
+                    value={formData.jobTitle}
+                    onChange={handleChange}
+                    placeholder="Optional"
+                    className={inputClassName()}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    className="block text-sm font-semibold text-slate-700"
+                    htmlFor="website"
+                  >
+                    Website
+                  </label>
+                  <input
+                    id="website"
+                    name="website"
+                    value={formData.website}
+                    onChange={handleChange}
+                    placeholder="https://example.com"
+                    className={inputClassName()}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <FavoriteToggle
+                    checked={formData.favorite}
+                    onChange={(value) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        favorite: value,
+                      }))
+                    }
+                  />
+                </div>
               </div>
-              <Input
-                label="Email Label"
-                name="emailLabel"
-                value={formData.emailLabel}
-                onChange={handleChange}
-                placeholder="personal"
-              />
             </div>
+          </section>
 
-            <p
-              className={`text-sm mb-4 ${
-                errors.phone ||
-                errors.email ||
-                (isBlank(formData.phone) && isBlank(formData.email))
-                  ? "text-amber-700"
-                  : "text-green-700"
-              }`}
-            >
-              {contactMethodHint}
-            </p>
+          <div className="grid gap-4 md:grid-cols-2">
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <h2 className="text-xl font-semibold text-slate-800">Phone</h2>
+              <div className="grid gap-4 md:grid-cols-12">
+                <div className="md:col-span-8 space-y-2">
+                  <label
+                    className="block text-sm font-semibold text-slate-700"
+                    htmlFor="phone"
+                  >
+                    Phone Number
+                  </label>
+                  <input
+                    id="phone"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    placeholder="e.g. +1-555-0100"
+                    className={inputClassName(errors.phone)}
+                    type="number"
+                  />
+                  {errors.phone && (
+                    <p className="text-sm text-red-600">{errors.phone}</p>
+                  )}
+                </div>
+                <div className="md:col-span-4 space-y-2">
+                  <label
+                    className="block text-sm font-semibold text-slate-700"
+                    htmlFor="phoneLabel"
+                  >
+                    Label
+                  </label>
+                  <input
+                    id="phoneLabel"
+                    name="phoneLabel"
+                    value={formData.phoneLabel}
+                    onChange={handleChange}
+                    placeholder="mobile"
+                    className={inputClassName()}
+                  />
+                </div>
+              </div>
+            </section>
 
-            <div className="grid md:grid-cols-2 gap-4">
-              <Input
-                label="Company"
-                name="company"
-                value={formData.company}
-                onChange={handleChange}
-                placeholder="Optional"
-              />
-              <Input
-                label="Job Title"
-                name="jobTitle"
-                value={formData.jobTitle}
-                onChange={handleChange}
-                placeholder="Optional"
-              />
-            </div>
+            <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+              <h2 className="text-xl font-semibold text-slate-800">Email</h2>
+              <div className="grid gap-4 md:grid-cols-12">
+                <div className="md:col-span-8 space-y-2">
+                  <label
+                    className="block text-sm font-semibold text-slate-700"
+                    htmlFor="email"
+                  >
+                    Email Address
+                  </label>
+                  <input
+                    id="email"
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleChange}
+                    placeholder="e.g. jane@example.com"
+                    className={inputClassName(errors.email)}
+                  />
+                  {errors.email && (
+                    <p className="text-sm text-red-600">{errors.email}</p>
+                  )}
+                </div>
+                <div className="md:col-span-4 space-y-2">
+                  <label
+                    className="block text-sm font-semibold text-slate-700"
+                    htmlFor="emailLabel"
+                  >
+                    Label
+                  </label>
+                  <input
+                    id="emailLabel"
+                    name="emailLabel"
+                    value={formData.emailLabel}
+                    onChange={handleChange}
+                    placeholder="personal"
+                    className={inputClassName()}
+                  />
+                </div>
+              </div>
+            </section>
+          </div>
 
-            <Input
-              label="Website"
-              name="website"
-              value={formData.website}
-              onChange={handleChange}
-              placeholder="https://example.com"
-              error={errors.website}
-            />
+          <div
+            className={`rounded-lg border px-4 py-3 text-sm font-medium ${
+              errors.phone ||
+              errors.email ||
+              (isBlank(formData.phone) && isBlank(formData.email))
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : "border-green-200 bg-green-50 text-green-700"
+            }`}
+          >
+            {contactMethodHint}
+          </div>
 
-            <Input
-              label="Photo URL"
-              name="photoUrl"
-              value={formData.photoUrl}
-              onChange={handleChange}
-              placeholder="https://example.com/photo.jpg"
-              error={errors.photoUrl}
-            />
-
-            <div className="mb-4">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
+            <h2 className="text-xl font-semibold text-slate-800">
+              Notes and Tags
+            </h2>
+            <div className="space-y-2">
               <label
-                className="block text-gray-700 text-sm font-semibold mb-2"
+                className="block text-sm font-semibold text-slate-700"
+                htmlFor="tagsText"
+              >
+                Tags
+              </label>
+              <input
+                id="tagsText"
+                name="tagsText"
+                value={formData.tagsText}
+                onChange={handleChange}
+                placeholder="Tags (comma separated)"
+                className={inputClassName()}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label
+                className="block text-sm font-semibold text-slate-700"
                 htmlFor="notes"
               >
                 Notes
@@ -351,50 +593,35 @@ const CreateContact = () => {
                 value={formData.notes}
                 onChange={handleChange}
                 placeholder="Optional notes"
-                rows={4}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                rows={5}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 outline-none transition focus:ring-2 focus:ring-blue-200"
               />
             </div>
-            <div className="grid md:grid-cols-2 gap-4">
-              <div className="mb-4">
-                <label
-                  className="block text-gray-700 text-sm font-semibold mb-2"
-                  htmlFor="favorite"
-                >
-                  Favorite
-                </label>
-                <label className="flex items-center gap-3 px-4 py-2 border border-gray-300 rounded-lg">
-                  <input
-                    id="favorite"
-                    type="checkbox"
-                    name="favorite"
-                    checked={formData.favorite}
-                    onChange={handleChange}
-                    className="h-4 w-4"
-                  />
-                  <span className="text-gray-700">
-                    Mark as favorite contact
-                  </span>
-                </label>
-              </div>
-            </div>
-
-            <div className="sticky bottom-0 z-10 flex items-center justify-end gap-3 mt-6 border-t-2 py-4 bg-white">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => navigate("/dashboard")}
-                disabled={loading}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" loading={loading}>
-                Save Contact
-              </Button>
-            </div>
-          </form>
+          </section>
         </div>
-      </div>
+
+        <div className="fixed inset-x-0 bottom-0 z-30 px-4 pb-4">
+          <div className="container mx-auto flex max-w-7xl items-center justify-between gap-3 rounded-xl border border-blue-200 bg-gradient-to-r from-blue-600/95 to-purple-600/95 px-4 py-3 shadow-lg backdrop-blur">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleResetForm}
+              disabled={loading}
+              className="border-white/40 bg-white/10 !text-white hover:!border-white hover:!bg-white/20"
+            >
+              Reset
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              loading={loading}
+              className="bg-white !text-blue-700 hover:!bg-blue-50"
+            >
+              Save Contact
+            </Button>
+          </div>
+        </div>
+      </form>
     </div>
   );
 };

@@ -1,16 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import ContactList from "../components/contacts/ContactList";
 import ExportContactsMenu from "../components/contacts/ExportContactsMenu";
 import Button from "../components/common/Button";
+import Sidebar from "../components/common/Sidebar";
+import ToastMessage from "../components/common/ToastMessage";
 import api from "../utils/api";
 import {
   exportContactsToCSV,
   exportContactsToExcel,
   exportContactsToVCard,
 } from "../utils/contactExport";
-import { loadContactMetaMap, removeContactMeta } from "../utils/contactMeta";
+import {
+  CONTACT_IMPORT_ACCEPT,
+  parseContactsImportFile,
+} from "../utils/contactImport";
+import {
+  loadContactMetaMap,
+  removeContactMeta,
+  upsertContactMeta,
+} from "../utils/contactMeta";
 
 const getId = (contact) => contact?._id || contact?.id;
 
@@ -22,35 +32,39 @@ const normalizeContacts = (items) => {
     const meta = metaMap[id] || {};
 
     const phoneNumbers =
-      meta.phoneNumbers ||
       contact.phoneNumbers ||
+      meta.phoneNumbers ||
       contact.phones ||
       (contact.phone ? [{ number: contact.phone, label: "Primary" }] : []);
 
     const emails =
-      meta.emails ||
       contact.emails ||
+      meta.emails ||
       (contact.email ? [{ email: contact.email, label: "Primary" }] : []);
 
-    const fallbackName =
+    const serverName =
       contact.name ||
       contact.displayName ||
       `${contact.firstName || ""} ${contact.lastName || ""}`.trim();
 
+    const metaName =
+      meta.firstName || meta.lastName
+        ? `${meta.firstName || ""} ${meta.lastName || ""}`.trim()
+        : "";
+
     return {
       ...contact,
       id,
-      name:
-        meta.firstName || meta.lastName
-          ? `${meta.firstName || ""} ${meta.lastName || ""}`.trim()
-          : fallbackName || "Unnamed Contact",
-      company: meta.company ?? contact.company ?? "",
-      jobTitle: meta.jobTitle ?? contact.jobTitle ?? "",
+      name: serverName || metaName || "Unnamed Contact",
+      company: contact.company ?? meta.company ?? "",
+      jobTitle: contact.jobTitle ?? meta.jobTitle ?? "",
       phoneNumbers,
       emails,
-      tags: meta.tags || contact.tags || [],
+      tags: contact.tags || meta.tags || [],
       favorite:
-        typeof meta.favorite === "boolean" ? meta.favorite : !!contact.favorite,
+        typeof contact.favorite === "boolean"
+          ? contact.favorite
+          : !!meta.favorite,
       createdAt: contact.createdAt || meta.createdAt,
       updatedAt: contact.updatedAt || meta.updatedAt,
     };
@@ -66,10 +80,13 @@ const Dashboard = () => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [importError, setImportError] = useState("");
   const [activeTab, setActiveTab] = useState("contacts");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [query, setQuery] = useState("");
-  const [sortBy, setSortBy] = useState("name_asc");
+  const [sortBy, setSortBy] = useState("recent");
+  const [favoriteFilter, setFavoriteFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -81,7 +98,17 @@ const Dashboard = () => {
   });
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const importInputRef = useRef(null);
+
+  const resetSearchSortAndFilter = () => {
+    setQuery("");
+    setSortBy("recent");
+    setFavoriteFilter("all");
+    setPage(1);
+  };
 
   const fetchContacts = async () => {
     try {
@@ -109,9 +136,18 @@ const Dashboard = () => {
 
   useEffect(() => {
     const routeMessage = location.state?.successMessage || location.state?.message;
-    if (!routeMessage) return;
+    const shouldRefreshContacts = !!location.state?.refreshContacts;
 
-    setSuccessMessage(routeMessage);
+    if (shouldRefreshContacts) {
+      fetchContacts();
+    }
+
+    if (routeMessage) {
+      setSuccessMessage(routeMessage);
+    }
+
+    if (!routeMessage && !shouldRefreshContacts) return;
+
     navigate(location.pathname, { replace: true, state: null });
   }, [location.pathname, location.state, navigate]);
 
@@ -135,6 +171,14 @@ const Dashboard = () => {
         .includes(lowered);
     });
 
+    if (favoriteFilter === "favorites") {
+      data = data.filter((contact) => !!contact.favorite);
+    }
+
+    if (favoriteFilter === "non_favorites") {
+      data = data.filter((contact) => !contact.favorite);
+    }
+
     data = [...data].sort((a, b) => {
       if (sortBy === "recent") {
         return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
@@ -149,7 +193,7 @@ const Dashboard = () => {
     });
 
     return data;
-  }, [contacts, query, sortBy]);
+  }, [contacts, favoriteFilter, query, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filteredContacts.length / perPage));
   const currentPage = Math.min(page, totalPages);
@@ -227,6 +271,82 @@ const Dashboard = () => {
     setDeleteDialog({ open: true, ids, label });
   };
 
+  const openImportPicker = () => {
+    setImportError("");
+    if (!importInputRef.current) return;
+    importInputRef.current.value = "";
+    importInputRef.current.click();
+  };
+
+  const handleImportFileSelection = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    setImportError("");
+    setSuccessMessage("");
+
+    try {
+      const { contacts: importedContacts, skipped } = await parseContactsImportFile(file);
+
+      if (!importedContacts.length) {
+        setImportError(
+          skipped.length
+            ? `No valid contacts were found in ${file.name}.`
+            : `The selected file does not contain importable contacts.`,
+        );
+        return;
+      }
+
+      let importedCount = 0;
+      let failedCount = 0;
+
+      for (const importedContact of importedContacts) {
+        try {
+          await api.post("/contacts", importedContact);
+          importedCount += 1;
+        } catch {
+          failedCount += 1;
+        }
+      }
+
+      await fetchContacts();
+
+      if (!importedCount) {
+        const parts = [`Unable to import contacts from ${file.name}.`];
+        if (skipped.length) {
+          parts.push(`Skipped ${skipped.length} invalid entr${skipped.length === 1 ? "y" : "ies"}.`);
+        }
+        if (failedCount) {
+          parts.push(`${failedCount} entr${failedCount === 1 ? "y failed" : "ies failed"} during upload.`);
+        }
+        setImportError(parts.join(" "));
+        return;
+      }
+
+      const parts = [
+        `Imported ${importedCount} contact${importedCount === 1 ? "" : "s"} from ${file.name}.`,
+      ];
+
+      if (skipped.length) {
+        parts.push(`Skipped ${skipped.length} invalid entr${skipped.length === 1 ? "y" : "ies"}.`);
+      }
+
+      if (failedCount) {
+        parts.push(`${failedCount} entr${failedCount === 1 ? "y failed" : "ies failed"} during upload.`);
+      }
+
+      setSuccessMessage(parts.join(" "));
+    } catch (importRequestError) {
+      setImportError(
+        importRequestError?.message || "Failed to import contacts from the selected file.",
+      );
+    } finally {
+      event.target.value = "";
+      setImporting(false);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!deleteDialog.ids.length) {
       setDeleteDialog({ open: false, ids: [], label: "" });
@@ -237,13 +357,19 @@ const Dashboard = () => {
     setDeleteError("");
 
     try {
-      await Promise.all(deleteDialog.ids.map((id) => api.delete(`/contacts/${id}`)));
-      deleteDialog.ids.forEach((id) => removeContactMeta(id));
+      const response = await api.delete("/contacts", {
+        data: { ids: deleteDialog.ids },
+      });
+      const deletedIds = Array.isArray(response?.data?.data?.ids)
+        ? response.data.data.ids
+        : deleteDialog.ids;
+
+      deletedIds.forEach((id) => removeContactMeta(id));
 
       setSelectedIds(new Set());
       setDeleteDialog({ open: false, ids: [], label: "" });
       setSuccessMessage(
-        deleteDialog.ids.length > 1
+        deletedIds.length > 1
           ? "Contacts deleted successfully."
           : "Contact deleted successfully.",
       );
@@ -261,6 +387,35 @@ const Dashboard = () => {
 
   const getSelectedContacts = () =>
     contacts.filter((item) => selectedIds.has(item.id || getId(item)));
+
+  const markSelectedAsFavorite = async () => {
+    const ids = Array.from(selectedIds);
+    if (!ids.length) return;
+
+    setFavoriteLoading(true);
+    setError("");
+
+    try {
+      await Promise.all(ids.map((id) => api.put(`/contacts/${id}`, { favorite: true })));
+      ids.forEach((id) => upsertContactMeta(id, { favorite: true }));
+
+      setSelectedIds(new Set());
+      setSuccessMessage(
+        ids.length > 1
+          ? "Selected contacts marked as favorite."
+          : "Contact marked as favorite.",
+      );
+
+      await fetchContacts();
+    } catch (favoriteRequestError) {
+      setError(
+        favoriteRequestError?.response?.data?.message ||
+          "Failed to mark selected contacts as favorite.",
+      );
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
 
   const mapContactForExport = (contact) => {
     const phones = (contact.phoneNumbers || contact.phones || [])
@@ -336,43 +491,97 @@ const Dashboard = () => {
       label: "Total Contacts",
       value: stats.total,
       helper: "All saved contacts",
-      accent: "bg-blue-50 text-blue-700",
+      cardClassName: "border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-100",
+      valueClassName: "text-blue-900",
+      labelClassName: "text-blue-700",
+      helperClassName: "text-blue-600",
+      accent: "bg-blue-600 text-white",
       icon: "TC",
     },
     {
       label: "Recently Added",
       value: stats.recentlyAdded,
       helper: "Added in the last 7 days",
-      accent: "bg-indigo-50 text-indigo-700",
+      cardClassName: "border-emerald-200 bg-gradient-to-br from-emerald-50 to-lime-100",
+      valueClassName: "text-emerald-900",
+      labelClassName: "text-emerald-700",
+      helperClassName: "text-emerald-600",
+      accent: "bg-emerald-600 text-white",
       icon: "RA",
     },
     {
       label: "Favorites",
       value: stats.favorites,
       helper: "Starred contacts",
-      accent: "bg-amber-50 text-amber-700",
+      cardClassName: "border-purple-200 bg-gradient-to-br from-purple-50 to-fuchsia-100",
+      valueClassName: "text-purple-900",
+      labelClassName: "text-purple-700",
+      helperClassName: "text-purple-600",
+      accent: "bg-purple-600 text-white",
       icon: "FV",
     },
     {
       label: "Active Contacts",
       value: stats.activeContacts,
       helper: "Updated in the last 30 days",
-      accent: "bg-emerald-50 text-emerald-700",
+      cardClassName: "border-amber-200 bg-gradient-to-br from-amber-50 to-orange-100",
+      valueClassName: "text-amber-900",
+      labelClassName: "text-amber-700",
+      helperClassName: "text-amber-600",
+      accent: "bg-amber-500 text-white",
       icon: "AC",
     },
   ];
 
+  const dashboardNavItems = [
+    {
+      key: "contacts",
+      label: "Contact List",
+      description: "Search, filter, export, and manage your contacts.",
+      badge: `${contacts.length}`,
+    },
+    {
+      key: "statistics",
+      label: "Statistics",
+      description: "See summary cards for totals, favorites, and recent activity.",
+      badge: `${stats.total}`,
+    },
+  ];
+
+  const handleSelectDashboardTab = (tabKey) => {
+    setActiveTab(tabKey);
+    setSidebarOpen(false);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
+      <ToastMessage
+        message={deleteError || importError || successMessage}
+        type={deleteError || importError ? "error" : "success"}
+        onClose={() => {
+          setSuccessMessage("");
+          setDeleteError("");
+          setImportError("");
+        }}
+      />
+
       <div className="container mx-auto max-w-7xl px-4 py-8 space-y-6">
-        <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-6 md:p-8 text-white shadow-lg">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <input
+          ref={importInputRef}
+          type="file"
+          accept={CONTACT_IMPORT_ACCEPT}
+          className="hidden"
+          onChange={handleImportFileSelection}
+        />
+
+        <section className="rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 p-5 md:p-6 text-white shadow-lg">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm font-medium text-blue-100">Dashboard Overview</p>
-              <h1 className="text-3xl font-bold mt-1">
+              <h1 className="mt-1 text-2xl font-bold md:text-3xl">
                 Welcome back, {user?.username || "User"}
               </h1>
-              <p className="text-blue-100 mt-2">
+              <p className="mt-2 text-sm text-blue-100 md:text-base">
                 Track your contacts, discover important updates, and manage everything in one
                 place.
               </p>
@@ -380,25 +589,32 @@ const Dashboard = () => {
 
             <div className="flex flex-col sm:flex-row gap-3">
               <Button
+                variant="outline"
+                onClick={openImportPicker}
+                loading={importing}
+                className="border-white/40 bg-white/10 !text-white hover:!border-white hover:!bg-white/20"
+              >
+                Import Contacts
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={() => setSidebarOpen(true)}
+                className="border-white/40 bg-white/10 !text-white hover:!border-white hover:!bg-white/20"
+              >
+                Menu
+              </Button>
+
+              <Button
                 variant="primary"
                 onClick={() => navigate("/contacts/new")}
                 className="bg-white !text-blue-700 hover:!bg-blue-50"
               >
                 Add New Contact
               </Button>
-
-              <div className="rounded-lg bg-white/15 px-4 py-2 text-sm backdrop-blur-sm">
-                Signed in as <span className="font-semibold">{user?.email || "Profile"}</span>
-              </div>
             </div>
           </div>
         </section>
-
-        {successMessage && (
-          <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-green-700">
-            {successMessage}
-          </div>
-        )}
 
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">
@@ -406,47 +622,28 @@ const Dashboard = () => {
           </div>
         )}
 
-        <section className="rounded-2xl bg-white shadow-sm border border-slate-200 p-2">
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveTab("contacts")}
-              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                activeTab === "contacts"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-            >
-              Contact List
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("statistics")}
-              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                activeTab === "statistics"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-            >
-              Statistics
-            </button>
-          </div>
-        </section>
-
         {activeTab === "statistics" ? (
           <section className="grid sm:grid-cols-2 xl:grid-cols-4 gap-4">
             {statCards.map((card) => (
               <article
                 key={card.label}
-                className="rounded-xl bg-white shadow-sm border border-slate-200 p-5"
+                className={`rounded-2xl border p-5 shadow-sm ${card.cardClassName}`}
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm text-slate-500">{card.label}</p>
-                    <p className="mt-2 text-3xl font-bold text-slate-800">{card.value}</p>
-                    <p className="mt-1 text-xs text-slate-500">{card.helper}</p>
+                    <p className={`text-sm font-semibold ${card.labelClassName}`}>
+                      {card.label}
+                    </p>
+                    <p className={`mt-2 text-3xl font-bold ${card.valueClassName}`}>
+                      {card.value}
+                    </p>
+                    <p className={`mt-1 text-xs ${card.helperClassName}`}>
+                      {card.helper}
+                    </p>
                   </div>
-                  <span className={`rounded-lg px-2.5 py-1 text-base ${card.accent}`}>
+                  <span
+                    className={`rounded-xl px-3 py-1.5 text-sm font-semibold shadow-sm ${card.accent}`}
+                  >
                     {card.icon}
                   </span>
                 </div>
@@ -455,7 +652,7 @@ const Dashboard = () => {
           </section>
         ) : (
           <section className="rounded-2xl bg-white shadow-md border border-slate-200 p-4 md:p-5 space-y-4">
-            <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
+            <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto_auto_auto] lg:items-end">
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-slate-600">
                   Search Contacts
@@ -468,7 +665,7 @@ const Dashboard = () => {
                     setPage(1);
                   }}
                   placeholder="Search by name, phone, email, company..."
-                  className="w-full rounded-lg border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-3/4 rounded-lg border border-slate-300 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </label>
 
@@ -476,7 +673,10 @@ const Dashboard = () => {
                 <span className="mb-1 block text-sm font-medium text-slate-600">Sort by</span>
                 <select
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
+                  onChange={(e) => {
+                    setSortBy(e.target.value);
+                    setPage(1);
+                  }}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="name_asc">Name (A-Z)</option>
@@ -486,10 +686,34 @@ const Dashboard = () => {
                 </select>
               </label>
 
-              <div className="text-sm text-slate-600 rounded-lg bg-slate-100 px-3 py-2.5">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-600">Filter</span>
+                <select
+                  value={favoriteFilter}
+                  onChange={(e) => {
+                    setFavoriteFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="all">All Contacts</option>
+                  <option value="favorites">Favorites Only</option>
+                  <option value="non_favorites">Non-favorites</option>
+                </select>
+              </label>
+
+              <Button
+                variant="outline"
+                onClick={resetSearchSortAndFilter}
+                className="h-[42px] border-slate-300 text-slate-700 hover:!border-slate-400 hover:!bg-slate-100"
+              >
+                Reset
+              </Button>
+
+              {/* <div className="text-sm text-slate-600 rounded-lg bg-slate-100 px-3 py-2.5">
                 Showing <span className="font-semibold text-slate-800">{filteredContacts.length}</span>{" "}
                 result{filteredContacts.length === 1 ? "" : "s"}
-              </div>
+              </div> */}
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
@@ -505,6 +729,16 @@ const Dashboard = () => {
               </div>
 
               <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  className="border-purple-600 text-purple-600 hover:!bg-purple-600 hover:!text-white hover:!border-purple-600"
+                  disabled={selectedIds.size === 0 || favoriteLoading}
+                  loading={favoriteLoading}
+                  onClick={markSelectedAsFavorite}
+                >
+                  Favorite Selected
+                </Button>
+
                 <Button
                   variant="outline"
                   className="border-red-600 text-red-600 hover:!bg-red-600 hover:!text-white hover:!border-red-600"
@@ -556,6 +790,15 @@ const Dashboard = () => {
         )}
       </div>
 
+      <Sidebar
+        open={sidebarOpen}
+        title="Dashboard"
+        items={dashboardNavItems}
+        activeKey={activeTab}
+        onSelect={handleSelectDashboardTab}
+        onClose={() => setSidebarOpen(false)}
+      />
+
       {deleteDialog.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
@@ -563,12 +806,6 @@ const Dashboard = () => {
             <p className="text-gray-600 mb-4">
               Delete {deleteDialog.label}? This action cannot be undone.
             </p>
-
-            {deleteError && (
-              <div className="rounded border border-red-300 bg-red-100 px-3 py-2 text-red-700 mb-3">
-                {deleteError}
-              </div>
-            )}
 
             <div className="flex justify-end gap-3">
               <Button

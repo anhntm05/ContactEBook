@@ -1,0 +1,55 @@
+[
+  {
+    "displayName": "Nguyen Van A",
+    "firstName": "Van",
+    "lastName": "Nguyen",
+    "nickname": "An",
+    "phones": [
+      {
+        "label": "mobile",
+        "value": "+84 912 345 678",
+        "isPrimary": true
+      }
+    ],
+    "emails": [
+      {
+        "label": "personal",
+        "value": "vana@example.com",
+        "isPrimary": true
+      }
+    ],
+    "company": "Example Co",
+    "jobTitle": "Account Manager",
+    "department": "Sales",
+    "addresses": [
+      {
+        "label": "home",
+        "fullAddress": "123 Nguyen Hue, Ben Nghe Ward, District 1, Ho Chi Minh City, Vietnam",
+        "postalCode": "700000"
+      },
+      {
+        "label": "office",
+        "fullAddress": "81 Le Duan, Ben Nghe Ward, District 1, Ho Chi Minh City, Vietnam",
+        "postalCode": "700000"
+      }
+    ],
+    "website": "https://example.com",
+    "socialLinks": [
+      {
+        "platform": "LinkedIn",
+        "url": "https://www.linkedin.com/in/nguyenvana"
+      }
+    ],
+    "birthday": {
+      "$date": "1994-05-21T00:00:00.000Z"
+    },
+    "notes": "Sample contact document using the new address schema.",
+    "tags": ["client", "priority"],
+    "favorite": true,
+    "source": "manual",
+    "createdBy": {
+      "$oid": "64f000000000000000000001"
+    },
+    "deletedAt": null
+  }
+]

@@ -42,17 +42,6 @@ const trimStringDeep = (value) => {
   return value;
 };
 
-const isValidUrl = (value) => {
-  if (typeof value !== "string" || value.length === 0) return false;
-
-  try {
-    const parsed = new URL(value);
-    return ["http:", "https:"].includes(parsed.protocol);
-  } catch {
-    return false;
-  }
-};
-
 const isValidObjectId = (value) =>
   typeof value === "string" && /^[a-fA-F0-9]{24}$/.test(value);
 
@@ -70,92 +59,78 @@ const hasAtLeastOneContactMethod = (phones = [], emails = []) => {
   return hasPhone || hasEmail;
 };
 
-const validatePhoneEntries = (phones, errors) => {
-  if (phones === undefined) return;
+const normalizeOptionalString = (value) =>
+  typeof value === "string" ? value.trim() : "";
 
-  if (!Array.isArray(phones)) {
-    addError(errors, "phones must be an array when provided");
-    return;
-  }
+const normalizePhoneEntries = (phones) => {
+  if (!Array.isArray(phones)) return [];
 
-  phones.forEach((phone, index) => {
-    if (!isObject(phone)) {
-      addError(errors, `phones[${index}] must be an object`);
-      return;
-    }
-
-    if (phone.value === undefined || phone.value === null || isBlankString(phone.value)) {
-      addError(errors, `phones[${index}].value is required`);
-    } else if (typeof phone.value !== "string") {
-      addError(errors, `phones[${index}].value must be a string`);
-    }
-
-    if (phone.label !== undefined && phone.label !== null && typeof phone.label !== "string") {
-      addError(errors, `phones[${index}].label must be a string`);
-    }
-
-    if (phone.isPrimary !== undefined && typeof phone.isPrimary !== "boolean") {
-      addError(errors, `phones[${index}].isPrimary must be a boolean`);
-    }
-  });
+  return phones
+    .filter(isObject)
+    .map((phone) => ({
+      label: normalizeOptionalString(phone.label) || "mobile",
+      value: normalizeOptionalString(phone.value || phone.number),
+      isPrimary: !!phone.isPrimary,
+    }))
+    .filter((phone) => phone.value);
 };
 
-const validateEmailEntries = (emails, errors) => {
-  if (emails === undefined) return;
+const normalizeEmailEntries = (emails) => {
+  if (!Array.isArray(emails)) return [];
 
-  if (!Array.isArray(emails)) {
-    addError(errors, "emails must be an array when provided");
-    return;
-  }
-
-  emails.forEach((email, index) => {
-    if (!isObject(email)) {
-      addError(errors, `emails[${index}] must be an object`);
-      return;
-    }
-
-    if (email.value === undefined || email.value === null || isBlankString(email.value)) {
-      addError(errors, `emails[${index}].value is required`);
-    } else if (typeof email.value !== "string") {
-      addError(errors, `emails[${index}].value must be a string`);
-    } else if (!EMAIL_REGEX.test(email.value)) {
-      addError(errors, `emails[${index}].value must be a valid email`);
-    }
-
-    if (email.label !== undefined && email.label !== null && typeof email.label !== "string") {
-      addError(errors, `emails[${index}].label must be a string`);
-    }
-
-    if (email.isPrimary !== undefined && typeof email.isPrimary !== "boolean") {
-      addError(errors, `emails[${index}].isPrimary must be a boolean`);
-    }
-  });
+  return emails
+    .filter(isObject)
+    .map((email) => ({
+      label: normalizeOptionalString(email.label) || "personal",
+      value: normalizeOptionalString(email.value || email.email).toLowerCase(),
+      isPrimary: !!email.isPrimary,
+    }))
+    .filter((email) => EMAIL_REGEX.test(email.value));
 };
 
-const validateSocialLinks = (socialLinks, errors) => {
-  if (socialLinks === undefined) return;
+const normalizeAddressEntries = (addresses) => {
+  if (!Array.isArray(addresses)) return [];
 
-  if (!Array.isArray(socialLinks)) {
-    addError(errors, "socialLinks must be an array when provided");
-    return;
+  return addresses
+    .filter(isObject)
+    .map((address) => ({
+      label: normalizeOptionalString(address.label) || "home",
+      fullAddress: normalizeOptionalString(address.fullAddress),
+      postalCode: normalizeOptionalString(address.postalCode),
+    }))
+    .filter((address) => address.fullAddress || address.postalCode);
+};
+
+const normalizeSocialLinks = (socialLinks) => {
+  if (!Array.isArray(socialLinks)) return [];
+
+  return socialLinks
+    .filter(isObject)
+    .map((item) => ({
+      platform: normalizeOptionalString(item.platform),
+      url: normalizeOptionalString(item.url),
+    }))
+    .filter((item) => item.platform && item.url);
+};
+
+const normalizeTags = (tags) => {
+  if (Array.isArray(tags)) {
+    return tags.filter((tag) => typeof tag === "string" && !isBlankString(tag));
   }
 
-  socialLinks.forEach((item, index) => {
-    if (!isObject(item)) {
-      addError(errors, `socialLinks[${index}] must be an object`);
-      return;
-    }
+  if (typeof tags === "string" && !isBlankString(tags)) {
+    return tags
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  }
 
-    if (item.platform !== undefined && item.platform !== null && typeof item.platform !== "string") {
-      addError(errors, `socialLinks[${index}].platform must be a string`);
-    }
+  return [];
+};
 
-    if (item.url !== undefined && item.url !== null) {
-      if (typeof item.url !== "string" || !isValidUrl(item.url)) {
-        addError(errors, `socialLinks[${index}].url must be a valid URL`);
-      }
-    }
-  });
+const normalizeGroupIds = (groupIds) => {
+  if (!Array.isArray(groupIds)) return [];
+  return groupIds.filter(isValidObjectId);
 };
 
 const validateCreateContact = (req, res, next) => {
@@ -186,57 +161,52 @@ const validateCreateContact = (req, res, next) => {
     addError(errors, "displayName must be a string");
   }
 
-  if (payload.photoUrl !== undefined && payload.photoUrl !== null) {
-    if (typeof payload.photoUrl !== "string" || !isValidUrl(payload.photoUrl)) {
-      addError(errors, "photoUrl must be a valid URL");
-    }
+  if ("photoUrl" in payload) {
+    payload.photoUrl = normalizeOptionalString(payload.photoUrl);
   }
 
-  if (payload.website !== undefined && payload.website !== null) {
-    if (typeof payload.website !== "string" || !isValidUrl(payload.website)) {
-      addError(errors, "website must be a valid URL");
-    }
+  if ("website" in payload) {
+    payload.website = normalizeOptionalString(payload.website);
   }
 
-  validatePhoneEntries(payload.phones, errors);
-  validateEmailEntries(payload.emails, errors);
-  validateSocialLinks(payload.socialLinks, errors);
-
-  if (payload.tags !== undefined && !Array.isArray(payload.tags)) {
-    addError(errors, "tags must be an array when provided");
+  if ("phones" in payload) {
+    payload.phones = normalizePhoneEntries(payload.phones);
   }
 
-  if (Array.isArray(payload.tags)) {
-    payload.tags.forEach((tag, index) => {
-      if (typeof tag !== "string" || isBlankString(tag)) {
-        addError(errors, `tags[${index}] must be a non-empty string`);
-      }
-    });
+  if ("emails" in payload) {
+    payload.emails = normalizeEmailEntries(payload.emails);
   }
 
-  if (payload.groupIds !== undefined && !Array.isArray(payload.groupIds)) {
-    addError(errors, "groupIds must be an array when provided");
+  if ("addresses" in payload) {
+    payload.addresses = normalizeAddressEntries(payload.addresses);
   }
 
-  if (Array.isArray(payload.groupIds)) {
-    payload.groupIds.forEach((groupId, index) => {
-      if (!isValidObjectId(groupId)) {
-        addError(errors, `groupIds[${index}] must be a valid ObjectId string`);
-      }
-    });
+  if ("socialLinks" in payload) {
+    payload.socialLinks = normalizeSocialLinks(payload.socialLinks);
   }
 
-  if (payload.favorite !== undefined && typeof payload.favorite !== "boolean") {
-    addError(errors, "favorite must be a boolean when provided");
+  if ("tags" in payload) {
+    payload.tags = normalizeTags(payload.tags);
   }
 
-  if (payload.birthday !== undefined && payload.birthday !== null) {
-    const date = new Date(payload.birthday);
+  if ("groupIds" in payload) {
+    payload.groupIds = normalizeGroupIds(payload.groupIds);
+  }
 
-    if (Number.isNaN(date.getTime())) {
-      addError(errors, "birthday must be a valid date");
+  if ("favorite" in payload) {
+    payload.favorite = !!payload.favorite;
+  }
+
+  if ("birthday" in payload) {
+    if (!payload.birthday) {
+      delete payload.birthday;
     } else {
-      payload.birthday = date;
+      const date = new Date(payload.birthday);
+      if (Number.isNaN(date.getTime())) {
+        delete payload.birthday;
+      } else {
+        payload.birthday = date;
+      }
     }
   }
 
@@ -260,4 +230,4 @@ const validateCreateContact = (req, res, next) => {
 };
 
 export default validateCreateContact;
-export { trimStringDeep, isBlankString, isValidUrl };
+export { trimStringDeep, isBlankString };

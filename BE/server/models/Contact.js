@@ -45,11 +45,8 @@ const emailSchema = new mongoose.Schema(
 const addressSchema = new mongoose.Schema(
   {
     label: { type: String, trim: true, default: "home" },
-    street: { type: String, trim: true },
-    city: { type: String, trim: true },
-    state: { type: String, trim: true },
+    fullAddress: { type: String, trim: true },
     postalCode: { type: String, trim: true },
-    country: { type: String, trim: true },
   },
   { _id: false }
 );
@@ -89,10 +86,6 @@ const ContactSchema = new mongoose.Schema(
     birthday: { type: Date },
     notes: { type: String, trim: true },
     tags: { type: [String], default: [] },
-    groupIds: {
-      type: [{ type: mongoose.Schema.Types.ObjectId, ref: "Group" }],
-      default: [],
-    },
     favorite: { type: Boolean, default: false },
     source: { type: String, trim: true, default: "manual" },
     createdBy: {
